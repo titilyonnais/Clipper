@@ -1,0 +1,195 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --ink-50: 245 245 246;
+  --ink-100: 229 229 231;
+  --ink-200: 200 200 204;
+  --ink-300: 165 165 171;
+  --ink-400: 125 125 132;
+  --ink-500: 92 92 100;
+  --ink-600: 58 58 64;
+  --ink-700: 39 39 43;
+  --ink-800: 28 28 31;
+  --ink-850: 21 21 24;
+  --ink-900: 16 16 19;
+  --ink-950: 10 10 12;
+  /* Overridden at runtime from the settings. */
+  --accent: 163 230 53;
+  --on-accent: 10 10 12;
+  --row-py: 0.7rem;
+  --row-lines: 2;
+}
+
+:root.light {
+  color-scheme: light;
+  --ink-50: 9 9 11;
+  --ink-100: 24 24 27;
+  --ink-200: 39 39 42;
+  --ink-300: 63 63 70;
+  --ink-400: 82 82 91;
+  --ink-500: 113 113 122;
+  --ink-600: 161 161 170;
+  --ink-700: 212 212 218;
+  --ink-800: 228 228 233;
+  --ink-850: 238 238 241;
+  --ink-900: 246 246 248;
+  --ink-950: 255 255 255;
+}
+
+:root[data-density="compact"] {
+  --row-py: 0.35rem;
+  --row-lines: 1;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  @apply font-sans text-ink-50 bg-ink-950 antialiased;
+  font-size: 13px;
+  overflow: hidden;
+  user-select: none;
+}
+
+::selection {
+  background: rgb(var(--accent) / 0.3);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--ink-700));
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(var(--ink-600));
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid rgb(var(--accent) / 0.7);
+  outline-offset: 1px;
+}
+
+pre,
+code,
+kbd {
+  @apply font-mono;
+  font-size: 12.5px;
+}
+
+kbd {
+  @apply rounded border border-ink-700 bg-ink-800 px-1.5 py-0.5 text-[10.5px] text-ink-300;
+}
+
+.selectable,
+.selectable * {
+  user-select: text;
+}
+
+/* Long unbroken strings (base64, URLs) must wrap. */
+pre code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Rows outside the viewport are not laid out or painted. */
+.clip-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 68px;
+  padding-top: var(--row-py);
+  padding-bottom: var(--row-py);
+}
+.clip-row .clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--row-lines);
+  overflow: hidden;
+}
+
+/* Syntax highlighting (dark / light) */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in,
+.hljs-tag {
+  color: #ff7b72;
+}
+.hljs-string,
+.hljs-attr,
+.hljs-template-string {
+  color: #a5d6ff;
+}
+.hljs-number,
+.hljs-literal,
+.hljs-symbol {
+  color: #79c0ff;
+}
+.hljs-title,
+.hljs-name,
+.hljs-function,
+.hljs-section {
+  color: #d2a8ff;
+}
+.hljs-comment,
+.hljs-meta {
+  color: #8b949e;
+  font-style: italic;
+}
+.hljs-variable,
+.hljs-property {
+  color: #ffa657;
+}
+.light .hljs-keyword,
+.light .hljs-selector-tag,
+.light .hljs-built_in,
+.light .hljs-tag {
+  color: #cf222e;
+}
+.light .hljs-string,
+.light .hljs-attr,
+.light .hljs-template-string {
+  color: #0a3069;
+}
+.light .hljs-number,
+.light .hljs-literal,
+.light .hljs-symbol {
+  color: #0550ae;
+}
+.light .hljs-title,
+.light .hljs-name,
+.light .hljs-function,
+.light .hljs-section {
+  color: #8250df;
+}
+.light .hljs-comment,
+.light .hljs-meta {
+  color: #6e7781;
+}
+.light .hljs-variable,
+.light .hljs-property {
+  color: #953800;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+  }
+}
