@@ -35,7 +35,9 @@ La compilation se fait sur les serveurs de GitHub : rien de lourd à installer n
 npm run release -- 2.0.1
 ```
 
-Le script met à jour le numéro de version, crée le commit et le tag `v2.0.1`, puis les pousse. Le workflow [`release.yml`](.github/workflows/release.yml) compile alors l'installateur `.exe` (NSIS) et le `.msi`, et publie la release (environ 10 minutes la première fois, puis nettement moins grâce au cache). Chaque push sur `main` est aussi vérifié par [`ci.yml`](.github/workflows/ci.yml) (typage, build, Clippy, tests).
+Le script (qui utilise la [CLI GitHub](https://cli.github.com), `gh`) change le numéro de version sur une branche `release/v2.0.1` et ouvre une pull request qui se fusionne toute seule dès que la CI est verte. L'arrivée de la nouvelle version sur `main` déclenche [`release.yml`](.github/workflows/release.yml), qui compile l'installateur `.exe` (NSIS) et le `.msi`, puis publie la release avec leurs empreintes SHA-256 (environ 10 minutes la première fois, nettement moins ensuite grâce au cache).
+
+La branche `main` est protégée : toute modification passe par une pull request vérifiée par [`ci.yml`](.github/workflows/ci.yml) (typage, build, Clippy, tests). Dependabot propose chaque semaine les mises à jour des dépendances.
 
 ## Développer en local (facultatif)
 

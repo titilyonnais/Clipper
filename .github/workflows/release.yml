@@ -1,17 +1,44 @@
 name: Release
 
-# Pushing a tag such as v2.0.1 (see `npm run release`) builds the Windows
+# A new version number on main (see `npm run release`) builds the Windows
 # installers on GitHub's machines and publishes them as a GitHub release.
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+    paths: [package.json]
   workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      exists: ${{ steps.v.outputs.exists }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: v
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="v$(node -p "require('./package.json').version")"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "$tag is already published."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
   windows:
+    needs: version
+    if: needs.version.outputs.exists == 'false'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -33,17 +60,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-          releaseName: Clipper ${{ github.ref_name }}
+          tagName: ${{ needs.version.outputs.tag }}
+          releaseName: Clipper ${{ needs.version.outputs.tag }}
+          releaseCommitish: ${{ github.sha }}
           releaseBody: |
-            Téléchargez **Clipper_*_x64-setup.exe** (recommandé, installation sans droits administrateur) ou le fichier **.msi**.
-            Nouveautés : voir [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md).
+            Téléchargez **Clipper_*_x64-setup.exe** (recommandé : installation sans droits administrateur) ou le fichier **.msi**.
+            Empreintes SHA-256 : `SHA256SUMS.txt`. Nouveautés : [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ needs.version.outputs.tag }}/CHANGELOG.md).
           releaseDraft: false
           prerelease: false
-          args: --verbose
 
       - name: Publish SHA-256 checksums
-        if: github.ref_type == 'tag'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -52,7 +78,7 @@ jobs:
           $files | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower(), $_.Name } |
             Set-Content -Encoding ascii SHA256SUMS.txt
           Get-Content SHA256SUMS.txt
-          gh release upload "${{ github.ref_name }}" SHA256SUMS.txt --clobber
+          gh release upload "${{ needs.version.outputs.tag }}" SHA256SUMS.txt --clobber
 
       - name: Keep installers as workflow artifacts
         uses: actions/upload-artifact@v4
