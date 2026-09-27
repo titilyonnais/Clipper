@@ -1,0 +1,90 @@
+name: Release
+
+# A new version number on main (see `npm run release`) builds the Windows
+# installers on GitHub's machines and publishes them as a GitHub release.
+on:
+  push:
+    branches: [main]
+    paths: [package.json]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      exists: ${{ steps.v.outputs.exists }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: v
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="v$(node -p "require('./package.json').version")"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "$tag is already published."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  windows:
+    needs: version
+    if: needs.version.outputs.exists == 'false'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ needs.version.outputs.tag }}
+          releaseName: Clipper ${{ needs.version.outputs.tag }}
+          releaseCommitish: ${{ github.sha }}
+          releaseBody: |
+            Téléchargez **Clipper_*_x64-setup.exe** (recommandé : installation sans droits administrateur) ou le fichier **.msi**.
+            Empreintes SHA-256 : `SHA256SUMS.txt`. Nouveautés : [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ needs.version.outputs.tag }}/CHANGELOG.md).
+          releaseDraft: false
+          prerelease: false
+
+      - name: Publish SHA-256 checksums
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $files = Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe, src-tauri/target/release/bundle/msi/*.msi
+          $files | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower(), $_.Name } |
+            Set-Content -Encoding ascii SHA256SUMS.txt
+          Get-Content SHA256SUMS.txt
+          gh release upload "${{ needs.version.outputs.tag }}" SHA256SUMS.txt --clobber
+
+      - name: Keep installers as workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: clipper-installers
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error

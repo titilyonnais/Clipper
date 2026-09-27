@@ -1,0 +1,60 @@
+[package]
+name = "clipper"
+version = "2.0.0"
+description = "Clipper - gestionnaire de presse-papiers pour Windows"
+authors = ["titilyonnais"]
+license = "MIT"
+repository = "https://github.com/titilyonnais/Clipper"
+edition = "2021"
+rust-version = "1.80"
+
+[lib]
+name = "clipper_lib"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png", "protocol-asset"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.37", features = ["bundled"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# native-tls = SChannel on Windows: no bundled crypto library, smaller binary.
+reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
+sha2 = "0.10"
+anyhow = "1"
+parking_lot = "0.12"
+log = { version = "0.4", features = ["std"] }
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png", "bmp"] }
+
+[target.'cfg(windows)'.dependencies]
+clipboard-win = { version = "5", features = ["monitor"] }
+keyring = { version = "3", features = ["windows-native"] }
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_System_Threading",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+[profile.dev]
+# Faster incremental builds: no debug info for dependencies.
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+opt-level = 1
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
