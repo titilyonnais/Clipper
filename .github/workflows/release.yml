@@ -81,7 +81,7 @@ jobs:
           gh release upload "${{ needs.version.outputs.tag }}" SHA256SUMS.txt --clobber
 
       - name: Keep installers as workflow artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: clipper-installers
           path: |
