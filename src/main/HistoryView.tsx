@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { CalendarDays, Clock, ListOrdered, Pin, Search, Trash2, X } from "lucide-react";
+import { CalendarDays, Clock, Code2, File, Image, Link2, ListOrdered, Pin, Search, Trash2, Type, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useClipList, useDebounced } from "@/lib/hooks";
 import { useSettings } from "@/lib/settings";
@@ -17,14 +17,28 @@ import { PreviewPanel } from "./PreviewPanel";
 import type { View } from "./Sidebar";
 import type { ClipKind, Collection, ListParams, TimeRange } from "@/types";
 
-const KINDS: { value: ClipKind | "all"; label: string }[] = [
+const KINDS: { value: ClipKind | "all"; label: string; icon?: React.ReactNode }[] = [
   { value: "all", label: "Tout" },
-  { value: "text", label: "Texte" },
-  { value: "code", label: "Code" },
-  { value: "url", label: "Liens" },
-  { value: "image", label: "Images" },
-  { value: "file", label: "Fichiers" },
+  { value: "text", label: "Texte", icon: <Type /> },
+  { value: "code", label: "Code", icon: <Code2 /> },
+  { value: "url", label: "Liens", icon: <Link2 /> },
+  { value: "image", label: "Images", icon: <Image /> },
+  { value: "file", label: "Fichiers", icon: <File /> },
 ];
+
+/** Type filter: words when the list is wide enough, icons (with tooltips) otherwise. */
+const KIND_OPTIONS = KINDS.map((k) => ({
+  value: k.value,
+  title: k.label,
+  label: k.icon ? (
+    <>
+      <span className="flex @[21.5rem]:hidden">{k.icon}</span>
+      <span className="hidden @[21.5rem]:inline">{k.label}</span>
+    </>
+  ) : (
+    k.label
+  ),
+}));
 
 const RANGES: { value: TimeRange; label: string }[] = [
   { value: null, label: "Toutes les dates" },
@@ -70,6 +84,8 @@ export const HistoryView = forwardRef<HistoryHandle, Props>(function HistoryView
   }, []);
   const q = useDebounced(query.trim(), 100);
   const searchRef = useRef<HTMLInputElement>(null);
+  const toolbar = useRef<HTMLDivElement>(null);
+  const toolbarHeight = useHeight(toolbar);
   const rangeMenu = useMenu();
   const context = useMenu();
 
@@ -200,7 +216,7 @@ export const HistoryView = forwardRef<HistoryHandle, Props>(function HistoryView
   return (
     <div className="flex min-w-0 flex-1 animate-in">
       <section className="flex shrink-0 flex-col" style={{ width: listPanel.width }} aria-label={title}>
-        <div className="space-y-2.5 border-b border-line px-3.5 pt-3.5 pb-3">
+        <div ref={toolbar} className="@container space-y-2.5 border-b border-line px-3.5 pt-3.5 pb-3">
           <div className="flex gap-2">
             <div className="relative min-w-0 flex-1">
               <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-subtle-foreground" />
@@ -212,7 +228,11 @@ export const HistoryView = forwardRef<HistoryHandle, Props>(function HistoryView
                 placeholder={searchPlaceholder(view, title)}
                 spellCheck={false}
                 aria-label="Rechercher"
-                className="h-9 w-full rounded-ctl border border-input/70 bg-muted/60 pr-16 pl-8.5 text-sm transition-[border-color,box-shadow] duration-150 placeholder:text-subtle-foreground hover:border-input focus:border-foreground/40 focus:ring-3 focus:ring-foreground/10"
+                className={cn(
+                  "h-9 w-full rounded-ctl border border-input/70 bg-muted/60 pl-8.5 text-sm text-ellipsis transition-[border-color,box-shadow] duration-150",
+                  "placeholder:text-subtle-foreground hover:border-input focus:border-foreground/40 focus:ring-3 focus:ring-foreground/10",
+                  query ? "pr-9" : "pr-3 @[20rem]:pr-[4.75rem]",
+                )}
               />
               {query ? (
                 <IconButton label="Effacer" size="xs" className="absolute top-1/2 right-1.5 -translate-y-1/2" onClick={() => setQuery("")}>
@@ -220,7 +240,7 @@ export const HistoryView = forwardRef<HistoryHandle, Props>(function HistoryView
                 </IconButton>
               ) : (
                 keymap.search && (
-                  <span className="pointer-events-none absolute top-1/2 right-2 flex -translate-y-1/2 gap-1">
+                  <span className="pointer-events-none absolute top-1/2 right-2 hidden -translate-y-1/2 gap-1 @[20rem]:flex">
                     {comboKeys(keymap.search).map((k) => (
                       <Kbd key={k}>{k}</Kbd>
                     ))}
@@ -240,7 +260,7 @@ export const HistoryView = forwardRef<HistoryHandle, Props>(function HistoryView
               {range && <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-foreground" />}
             </IconButton>
           </div>
-          <Segmented size="sm" stretch label="Type" value={kind} onChange={setKind} options={KINDS} />
+          <Segmented size="sm" stretch label="Type" value={kind} onChange={setKind} options={KIND_OPTIONS} />
           {range && (
             <div className="flex h-5 animate-in items-center gap-2 text-xs text-muted-foreground">
               <CalendarDays className="size-3.5" />
@@ -329,6 +349,7 @@ export const HistoryView = forwardRef<HistoryHandle, Props>(function HistoryView
         onCopy={copy}
         onNewCollection={() => onNewCollection(active ? [active.id] : undefined)}
         aiOnline={aiOnline}
+        emptyOffset={toolbarHeight}
       />
 
       {rangeMenu.anchor && (
@@ -407,3 +428,16 @@ export function viewTitle(view: View, collections: Collection[]) {
   }
 }
 
+
+/** Height of an element, kept up to date. */
+function useHeight(ref: React.RefObject<HTMLElement | null>) {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setHeight(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  return height;
+}

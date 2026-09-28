@@ -43,17 +43,6 @@ pub async fn delete_collection(
     Ok(())
 }
 
-#[tauri::command]
-pub async fn reorder_collections(
-    ids: Vec<i64>,
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> CmdResult<()> {
-    state.db.reorder_collections(&ids).map_err(err)?;
-    changed(&app);
-    Ok(())
-}
-
 /// File clips in a collection (`None` removes them from their collection).
 #[tauri::command]
 pub async fn set_collection(
@@ -72,11 +61,6 @@ pub async fn set_collection(
 // ─── Tags ───
 
 #[tauri::command]
-pub async fn list_tags(state: State<'_, AppState>) -> CmdResult<Vec<(String, i64)>> {
-    state.db.tags().map_err(err)
-}
-
-#[tauri::command]
 pub async fn update_tags(
     id: i64,
     tags: Vec<String>,
@@ -86,32 +70,6 @@ pub async fn update_tags(
     state.db.update_tags(id, &tags).map_err(err)?;
     changed(&app);
     Ok(())
-}
-
-#[tauri::command]
-pub async fn rename_tag(
-    old: String,
-    new: String,
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> CmdResult<usize> {
-    if new.trim().trim_start_matches('#').is_empty() {
-        return Err("Le nom ne peut pas être vide.".into());
-    }
-    let n = state.db.edit_tag(&old, Some(&new)).map_err(err)?;
-    changed(&app);
-    Ok(n)
-}
-
-#[tauri::command]
-pub async fn delete_tag(
-    name: String,
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> CmdResult<usize> {
-    let n = state.db.edit_tag(&name, None).map_err(err)?;
-    changed(&app);
-    Ok(n)
 }
 
 // ─── Snippets ───

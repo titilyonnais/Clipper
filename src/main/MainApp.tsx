@@ -4,10 +4,10 @@ import { useTauriEvent } from "@/lib/hooks";
 import { useSettings } from "@/lib/settings";
 import { useAiOnline } from "@/lib/ai";
 import { actionFor, overlayOpen, useKeymap } from "@/lib/shortcuts";
-import { run } from "@/clip/actions";
+import { undoDelete } from "@/clip/actions";
 import { Splitter, usePanelWidth } from "@/ui/splitter";
 import { TitleBar } from "./TitleBar";
-import { Sidebar, type NewCollection, type View } from "./Sidebar";
+import { FOLDED_WIDTH, Sidebar, type NewCollection, type View } from "./Sidebar";
 import { HistoryView, viewTitle, type HistoryHandle } from "./HistoryView";
 import { SnippetsView, useSnippets } from "./SnippetsView";
 import { SettingsView } from "./SettingsView";
@@ -26,6 +26,7 @@ export function MainApp() {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [apps, setApps] = useState<SourceApp[]>([]);
   const [creating, setCreating] = useState<NewCollection | null>(null);
+  const [naming, setNaming] = useState(false);
   const [onboardingDone, setOnboardingDone] = useState(false);
   const history = useRef<HistoryHandle>(null);
   const snippets = useSnippets();
@@ -38,7 +39,7 @@ export function MainApp() {
   const [folded, setFolded] = useState(() => readFlag(COLLAPSED_KEY));
   const [peek, setPeek] = useState(false);
   useEffect(() => setPeek(false), [narrow]);
-  const collapsed = !creating && (narrow ? !peek : folded);
+  const collapsed = !creating && !naming && (narrow ? !peek : folded);
   const toggleSidebar = useCallback(() => {
     if (narrow) setPeek((p) => !p);
     else
@@ -49,7 +50,7 @@ export function MainApp() {
   }, [narrow]);
 
   const sidebar = usePanelWidth("sidebar", 224, 180, 320);
-  const sidebarWidth = collapsed ? 60 : sidebar.width;
+  const sidebarWidth = collapsed ? FOLDED_WIDTH : sidebar.width;
   // The preview keeps at least 360 px.
   const list = usePanelWidth("list", 380, 330, Math.max(330, Math.min(680, windowWidth - sidebarWidth - 360)));
 
@@ -102,7 +103,7 @@ export function MainApp() {
           go({ kind: "settings" });
           break;
         case "undo":
-          run(() => api.undoDelete());
+          undoDelete();
           break;
         default:
           return;
@@ -117,7 +118,7 @@ export function MainApp() {
 
   return (
     <div className="flex h-screen flex-col bg-background">
-      <TitleBar />
+      <TitleBar sidebarFolded={collapsed} onToggleSidebar={toggleSidebar} />
       <div className="flex min-h-0 flex-1">
         <Sidebar
           view={view}
@@ -128,9 +129,9 @@ export function MainApp() {
           snippetCount={snippets.length}
           width={sidebar.width}
           collapsed={collapsed}
-          onToggleCollapsed={toggleSidebar}
           creating={creating}
           onCreating={setCreating}
+          onNaming={setNaming}
         />
         {collapsed ? <div className="w-px shrink-0 bg-line" /> : <Splitter panel={sidebar} label="Largeur de la barre latérale" />}
         {showHistory && (

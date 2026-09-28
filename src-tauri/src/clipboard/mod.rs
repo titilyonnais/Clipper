@@ -20,8 +20,6 @@ use std::sync::atomic::{AtomicI64, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-const MAX_IMAGE_BYTES: usize = 40 * 1024 * 1024;
-
 /// Capture state shared by the monitor, the commands and the tray.
 #[derive(Default)]
 pub struct MonitorState {
@@ -115,7 +113,10 @@ fn on_clipboard_change(db: &Db, state: &MonitorState, on_stored: &impl Fn(Stored
     let settings = db.get_settings().unwrap_or_default();
     let captured = match win::capture(&settings.ignore_apps, settings.keep_rich_text) {
         Ok(c) => c,
-        Err(_) => return,
+        Err(reason) => {
+            log::debug!("not recorded: {reason:?}");
+            return;
+        }
     };
     let app_name = captured.app.as_ref().map(|a| a.name.as_str());
     let stored = match &captured.content {
@@ -192,7 +193,7 @@ fn store_files(db: &Db, paths: &[String], source_app: Option<&str>) -> StoreResu
 }
 
 fn store_image(db: &Db, png: &[u8], source_app: Option<&str>) -> StoreResult {
-    if png.is_empty() || png.len() > MAX_IMAGE_BYTES {
+    if png.is_empty() || png.len() > win::MAX_IMAGE_BYTES {
         return Ok(None);
     }
     let (w, h) = png_dimensions(png).ok_or_else(|| anyhow!("invalid PNG"))?;

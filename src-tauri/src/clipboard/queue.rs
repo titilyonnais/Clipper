@@ -10,16 +10,19 @@ use serde::Serialize;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
-use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows_sys::Win32::Foundation::{GlobalFree, HWND, LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, GetClipboardOwner, GetOpenClipboardWindow, OpenClipboard,
     SetClipboardData,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+use windows_sys::Win32::System::Memory::{
+    GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE, GMEM_ZEROINIT,
+};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, GetForegroundWindow, GetMessageW,
-    GetWindowThreadProcessId, PostMessageW, RegisterClassW, HWND_MESSAGE, MSG, WM_APP, WNDCLASSW,
+    GetWindowThreadProcessId, PostMessageW, RegisterClassW, SendMessageTimeoutW, HWND_MESSAGE, MSG,
+    SMTO_ABORTIFHUNG, WM_APP, WNDCLASSW,
 };
 
 const CF_UNICODETEXT: u32 = 13;
@@ -144,6 +147,16 @@ pub fn stop() {
     post(WM_STOP);
 }
 
+/// Stop and wait until the pending item is really on the clipboard (on
+/// exit: the process must not end before the queue thread has done it).
+pub fn stop_and_wait() {
+    let hwnd = WINDOW.load(Ordering::SeqCst) as HWND;
+    if !hwnd.is_null() {
+        let mut result = 0usize;
+        unsafe { SendMessageTimeoutW(hwnd, WM_STOP, 0, 0, SMTO_ABORTIFHUNG, 1000, &mut result) };
+    }
+}
+
 unsafe fn open_clipboard(hwnd: HWND) -> bool {
     // The application that just pasted may still hold the clipboard.
     for _ in 0..50 {
@@ -165,11 +178,15 @@ unsafe fn set_text(text: &str) {
     }
     let ptr = GlobalLock(handle) as *mut u16;
     if ptr.is_null() {
+        GlobalFree(handle);
         return;
     }
     std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr, wide.len());
     GlobalUnlock(handle);
-    SetClipboardData(CF_UNICODETEXT, handle);
+    // On success the clipboard owns the memory; otherwise it is ours to free.
+    if SetClipboardData(CF_UNICODETEXT, handle).is_null() {
+        GlobalFree(handle);
+    }
 }
 
 /// Announce the current item without providing it yet.
@@ -193,9 +210,9 @@ unsafe fn take_ownership(hwnd: HWND) {
         "Clipboard Viewer Ignore",
     ] {
         if let Some(fmt) = super::win::registered(name) {
-            let handle = GlobalAlloc(GMEM_MOVEABLE, 4);
-            if !handle.is_null() {
-                SetClipboardData(fmt, handle);
+            let handle = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, 4);
+            if !handle.is_null() && SetClipboardData(fmt, handle).is_null() {
+                GlobalFree(handle);
             }
         }
     }

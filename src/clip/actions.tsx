@@ -50,10 +50,15 @@ export function isText(clip: ClipItem) {
 export function deleteClips(ids: number[]) {
   return run(async () => {
     const n = await api.remove(ids);
-    toast(n > 1 ? `${n} éléments supprimés.` : "Supprimé.", false, {
-      label: "Annuler",
-      run: () => run(() => api.undoDelete()),
-    });
+    toast(n > 1 ? `${n} éléments supprimés.` : "Supprimé.", false, { label: "Annuler", run: undoDelete });
+  });
+}
+
+/** Put back the last deletion (possible for a few seconds). */
+export function undoDelete() {
+  return run(async () => {
+    const n = await api.undoDelete();
+    toast(n ? (n > 1 ? `${n} éléments restaurés.` : "Restauré.") : "Plus rien à annuler.");
   });
 }
 

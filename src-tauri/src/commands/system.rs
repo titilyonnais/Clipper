@@ -10,9 +10,9 @@ fn settings_changed(app: &AppHandle) {
     let _ = tauri::Emitter::emit(app, "settings:changed", ());
 }
 
-pub fn settings_view(app: &AppHandle, state: &AppState, settings: Settings) -> SettingsView {
+pub fn settings_view(state: &AppState, settings: Settings) -> SettingsView {
     SettingsView {
-        win_v_active: settings.shortcut_mode == "win_v" && crate::shortcut_registered(app),
+        win_v_active: settings.shortcut_mode == "win_v" && crate::shortcut_registered(),
         settings,
         openai_key_set: credentials::is_set("openai"),
         anthropic_key_set: credentials::is_set("anthropic"),
@@ -22,9 +22,9 @@ pub fn settings_view(app: &AppHandle, state: &AppState, settings: Settings) -> S
 }
 
 #[tauri::command]
-pub async fn get_settings(app: AppHandle, state: State<'_, AppState>) -> CmdResult<SettingsView> {
+pub async fn get_settings(state: State<'_, AppState>) -> CmdResult<SettingsView> {
     let settings = state.db.get_settings().map_err(err)?;
-    Ok(settings_view(&app, &state, settings))
+    Ok(settings_view(&state, settings))
 }
 
 #[tauri::command]
@@ -71,18 +71,13 @@ pub async fn set_settings(
         changed(&app);
     }
     settings_changed(&app);
-    Ok(settings_view(&app, &state, settings))
+    Ok(settings_view(&state, settings))
 }
 
 #[tauri::command]
 pub async fn set_api_key(provider: String, key: String) -> CmdResult<bool> {
     credentials::set(&provider, &key)?;
     Ok(credentials::is_set(&provider))
-}
-
-#[tauri::command]
-pub fn notify_settings_changed(app: AppHandle) {
-    settings_changed(&app);
 }
 
 /// The window edges follow the theme the interface resolved.
@@ -192,7 +187,7 @@ pub async fn complete_onboarding(
     settings.onboarded = true;
     state.db.set_settings(&settings).map_err(err)?;
     settings_changed(&app);
-    Ok(settings_view(&app, &state, settings))
+    Ok(settings_view(&state, settings))
 }
 
 // ─── Backups ───
@@ -204,13 +199,7 @@ pub async fn list_backups(state: State<'_, AppState>) -> CmdResult<Vec<BackupInf
 
 #[tauri::command]
 pub async fn backup_now(state: State<'_, AppState>) -> CmdResult<Vec<BackupInfo>> {
-    let dir = backup::dir(&state.db);
-    std::fs::create_dir_all(&dir).map_err(err)?;
-    let name = format!(
-        "clipper-{}.db",
-        chrono::Local::now().format("%Y-%m-%d-%H%M%S")
-    );
-    state.db.backup_to(&dir.join(name)).map_err(err)?;
+    backup::run_now(&state.db).map_err(err)?;
     Ok(backup::list(&state.db))
 }
 

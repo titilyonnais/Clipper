@@ -1,16 +1,19 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Copy, EyeOff, ListOrdered, Minus, Square, X } from "lucide-react";
+import { Copy, EyeOff, ListOrdered, Minus, PanelLeftClose, PanelLeftOpen, Square, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useTauriEvent } from "@/lib/hooks";
 import { useSettings } from "@/lib/settings";
+import { comboLabel, useKeymap } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
-import { Button } from "@/ui/button";
+import { Button, IconButton } from "@/ui/button";
 import { Logo } from "@/ui/misc";
 import type { QueueStatus } from "@/types";
 
-export function TitleBar() {
+/** Window title bar; the sidebar toggle sits at its left, above the sidebar icons. */
+export function TitleBar({ sidebarFolded, onToggleSidebar }: { sidebarFolded: boolean; onToggleSidebar: () => void }) {
   const { settings } = useSettings();
+  const keymap = useKeymap();
   const [maximized, setMaximized] = useState(false);
   const [queue, setQueue] = useState<QueueStatus | null>(null);
   const w = getCurrentWindow();
@@ -36,7 +39,13 @@ export function TitleBar() {
 
   return (
     <header className="flex h-11 shrink-0 items-center border-b border-line bg-background" data-tauri-drag-region>
-      <div className="flex h-full items-center gap-2.5 pl-4" data-tauri-drag-region>
+      <div className="flex h-full items-center gap-2 pl-2.5" data-tauri-drag-region>
+        <IconButton
+          label={`${sidebarFolded ? "Déplier" : "Replier"} la barre latérale (${comboLabel(keymap.toggle_sidebar)})`}
+          onClick={onToggleSidebar}
+        >
+          {sidebarFolded ? <PanelLeftOpen /> : <PanelLeftClose />}
+        </IconButton>
         <Logo className="size-[18px] text-foreground" />
         <span className="text-13 font-medium tracking-tight" data-tauri-drag-region>
           Clipper

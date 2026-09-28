@@ -44,20 +44,36 @@ pub fn list(db: &Db) -> Vec<BackupInfo> {
     out
 }
 
-/// Back up today's database unless it is already done, then prune.
+/// Back up today's database unless it is already done.
 pub fn run_daily(db: &Db) -> anyhow::Result<bool> {
-    let dir = dir(db);
-    std::fs::create_dir_all(&dir)?;
     let name = format!("{PREFIX}{}.db", chrono::Local::now().format("%Y-%m-%d"));
-    let dest = dir.join(&name);
-    if dest.exists() {
+    if dir(db).join(&name).exists() {
         return Ok(false);
     }
-    db.backup_to(&dest)?;
+    write(db, &name)?;
+    Ok(true)
+}
+
+/// Back up now (from the settings), whatever the day's backup.
+pub fn run_now(db: &Db) -> anyhow::Result<()> {
+    write(
+        db,
+        &format!(
+            "{PREFIX}{}.db",
+            chrono::Local::now().format("%Y-%m-%d-%H%M%S")
+        ),
+    )
+}
+
+/// Write a backup, then keep only the most recent ones.
+fn write(db: &Db, name: &str) -> anyhow::Result<()> {
+    let dir = dir(db);
+    std::fs::create_dir_all(&dir)?;
+    db.backup_to(&dir.join(name))?;
     for old in list(db).into_iter().skip(KEEP) {
         let _ = std::fs::remove_file(dir.join(old.name));
     }
-    Ok(true)
+    Ok(())
 }
 
 pub fn restore(db: &Db, name: &str) -> Result<(), String> {

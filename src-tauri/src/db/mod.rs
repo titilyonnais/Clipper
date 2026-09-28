@@ -23,6 +23,8 @@ pub struct Db {
     conn: Mutex<Connection>,
     path: PathBuf,
     images_dir: PathBuf,
+    /// When the deletion that can still be undone happened.
+    undo_since: Mutex<Option<std::time::Instant>>,
 }
 
 pub fn now() -> String {
@@ -36,6 +38,8 @@ fn open_connection(path: &Path) -> Result<Connection> {
     conn.pragma_update(None, "temp_store", "MEMORY")?;
     // Keep the write-ahead log small once its content is checkpointed.
     conn.pragma_update(None, "journal_size_limit", 4 * 1024 * 1024)?;
+    // Deleted clips (secrets included) are overwritten, not left in free pages.
+    conn.pragma_update(None, "secure_delete", "FAST")?;
     Ok(conn)
 }
 
@@ -48,9 +52,11 @@ impl Db {
             conn: Mutex::new(open_connection(&path)?),
             path,
             images_dir,
+            undo_since: Mutex::new(None),
         };
         db.migrate()?;
         db.conn.lock().pragma_update(None, "foreign_keys", "ON")?;
+        db.tidy_images()?;
         Ok(db)
     }
 
@@ -59,17 +65,53 @@ impl Db {
     }
 
     /// Write a consistent copy of the database to `dest` (used by backups).
+    /// A second connection reads the database (WAL allows it), so capture and
+    /// the interface are not blocked while the copy is written.
     pub fn backup_to(&self, dest: &Path) -> Result<()> {
         let _ = std::fs::remove_file(dest);
-        self.conn.lock().execute(
+        Connection::open(&self.path)?.execute(
             "VACUUM INTO ?1",
             params![dest.to_string_lossy().into_owned()],
         )?;
         Ok(())
     }
 
+    /// Image files are stored beside the database. Remove the ones no clip
+    /// uses any more (left by a crash before a deletion became final), and
+    /// the image clips whose file is gone (a backup restored from before
+    /// the file was deleted).
+    fn tidy_images(&self) -> Result<()> {
+        let used: std::collections::HashSet<String> = {
+            let c = self.conn.lock();
+            let mut stmt = c.prepare("SELECT content FROM clips WHERE kind = 'image'")?;
+            let rows = stmt.query_map([], |r| r.get(0))?;
+            rows.collect::<rusqlite::Result<_>>()?
+        };
+        let mut present = std::collections::HashSet::new();
+        for entry in std::fs::read_dir(&self.images_dir)?.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if used.contains(&name) {
+                present.insert(name);
+            } else if name.ends_with(".png") {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+        let missing: Vec<&String> = used.iter().filter(|f| !present.contains(*f)).collect();
+        if !missing.is_empty() {
+            let c = self.conn.lock();
+            for file in missing {
+                c.execute(
+                    "DELETE FROM clips WHERE kind = 'image' AND content = ?1",
+                    params![file],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
     /// Replace the database with the file at `src` (a backup) and reopen it.
     pub fn restore_from(&self, src: &Path) -> Result<()> {
+        self.forget_undo()?;
         let mut conn = self.conn.lock();
         // Release the file before overwriting it.
         *conn = Connection::open_in_memory()?;
@@ -82,6 +124,7 @@ impl Db {
         drop(conn);
         self.migrate()?;
         self.conn.lock().pragma_update(None, "foreign_keys", "ON")?;
+        self.tidy_images()?;
         Ok(())
     }
 
@@ -337,22 +380,26 @@ fn fix_file_clips(tx: &rusqlite::Transaction) -> Result<()> {
     Ok(())
 }
 
-const SCHEMA_COLLECTIONS: &str = "
+/// The collections table on its own: the v2 -> v3 migration needs it before
+/// the clips table is rebuilt.
+macro_rules! collections_table {
+    () => {
+        "
 CREATE TABLE IF NOT EXISTS collections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE COLLATE NOCASE,
     position INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
-";
+"
+    };
+}
 
-const SCHEMA: &str = "
-CREATE TABLE IF NOT EXISTS collections (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    position INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
-);
+const SCHEMA_COLLECTIONS: &str = collections_table!();
+
+const SCHEMA: &str = concat!(
+    collections_table!(),
+    "
 CREATE TABLE IF NOT EXISTS clips (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     kind TEXT NOT NULL,
@@ -396,7 +443,8 @@ CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
-";
+"
+);
 
 /// What the search index stores for a row: never the text of a secret, never
 /// an image file name.

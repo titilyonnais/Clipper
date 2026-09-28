@@ -60,7 +60,6 @@ pub fn run() {
             commands::clips::delete_clips,
             commands::clips::undo_delete,
             commands::clips::clear_history,
-            commands::clips::cleanup_now,
             commands::clips::start_queue,
             commands::clips::stop_queue,
             commands::clips::queue_status,
@@ -68,12 +67,8 @@ pub fn run() {
             commands::organize::create_collection,
             commands::organize::rename_collection,
             commands::organize::delete_collection,
-            commands::organize::reorder_collections,
             commands::organize::set_collection,
-            commands::organize::list_tags,
             commands::organize::update_tags,
-            commands::organize::rename_tag,
-            commands::organize::delete_tag,
             commands::organize::list_snippets,
             commands::organize::save_snippet,
             commands::organize::delete_snippet,
@@ -89,7 +84,6 @@ pub fn run() {
             commands::system::get_settings,
             commands::system::set_settings,
             commands::system::set_api_key,
-            commands::system::notify_settings_changed,
             commands::system::set_frame_theme,
             commands::system::enable_win_v,
             commands::system::disable_win_v,
@@ -123,7 +117,7 @@ pub fn run() {
         .expect("error while building Clipper")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
-                clipboard::queue::stop();
+                clipboard::queue::stop_and_wait();
                 if let Some(state) = app.try_state::<AppState>() {
                     if let Err(e) = state.db.forget_undo() {
                         log::warn!("forget_undo: {e}");
@@ -204,6 +198,12 @@ fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     }
     window::create_popup(app)?;
     tray::build(app)?;
+    // Keep Explorer's setting (and the uninstaller's marker) in line with the mode.
+    if settings.shortcut_mode == "win_v" {
+        if let Err(e) = hotkey::set_explorer_win_v_disabled(true) {
+            log::warn!("{e}");
+        }
+    }
     if let Err(e) = register_shortcut(app, &settings) {
         log::warn!("{e}");
     }
@@ -246,39 +246,43 @@ fn spawn_maintenance(app: AppHandle, db: Arc<Db>) {
 }
 
 /// Whether the last shortcut registration succeeded.
-pub fn shortcut_registered(_app: &AppHandle) -> bool {
+pub fn shortcut_registered() -> bool {
     SHORTCUT_OK.load(Ordering::Relaxed)
 }
 
 /// Register the global shortcut that opens the popup: Win+V, or the custom
-/// accelerator (empty = none).
+/// accelerator (empty = none). When Win+V is still held by Explorer, the
+/// custom shortcut is registered instead so the popup stays reachable.
 pub fn register_shortcut(app: &AppHandle, settings: &Settings) -> Result<(), String> {
     let gs = app.global_shortcut();
     let _ = gs.unregister_all();
     SHORTCUT_OK.store(false, Ordering::Relaxed);
-    let accel = if settings.shortcut_mode == "win_v" {
-        "Super+V".to_string()
-    } else {
-        settings.shortcut.trim().to_string()
+    let custom = settings.shortcut.trim();
+    let register = |accel: &str| -> Result<(), String> {
+        let shortcut: Shortcut = accel
+            .parse()
+            .map_err(|_| format!("Raccourci invalide : {accel}"))?;
+        gs.on_shortcut(shortcut, |app, _shortcut, event| {
+            if event.state() == ShortcutState::Pressed {
+                window::toggle_popup(app);
+            }
+        })
+        .map_err(|_| format!("Le raccourci {accel} est déjà utilisé par une autre application."))
     };
-    if accel.is_empty() {
+    if settings.shortcut_mode == "win_v" {
+        if register("Super+V").is_ok() {
+            SHORTCUT_OK.store(true, Ordering::Relaxed);
+            return Ok(());
+        }
+        if !custom.is_empty() {
+            let _ = register(custom);
+        }
+        return Err("Win+V est encore réservé par Windows : relancez l'Explorateur.".into());
+    }
+    if custom.is_empty() {
         return Ok(());
     }
-    let shortcut: Shortcut = accel
-        .parse()
-        .map_err(|_| format!("Raccourci invalide : {accel}"))?;
-    gs.on_shortcut(shortcut, |app, _shortcut, event| {
-        if event.state() == ShortcutState::Pressed {
-            window::toggle_popup(app);
-        }
-    })
-    .map_err(|_| {
-        if settings.shortcut_mode == "win_v" {
-            "Win+V est encore réservé par Windows : relancez l'Explorateur.".to_string()
-        } else {
-            format!("Le raccourci {accel} est déjà utilisé par une autre application.")
-        }
-    })?;
+    register(custom)?;
     SHORTCUT_OK.store(true, Ordering::Relaxed);
     Ok(())
 }

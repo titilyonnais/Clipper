@@ -9,6 +9,9 @@ const CLIP_COLUMNS: &str = "id, kind, preview, language, tags, pinned, collectio
      CASE WHEN kind = 'image' THEN content END";
 const N_COLUMNS: usize = 15;
 
+/// How long the last deletion can be undone.
+const UNDO_WINDOW: std::time::Duration = std::time::Duration::from_secs(15);
+
 /// Rows kept by retention and the item limit: pinned and filed ones.
 const KEPT: &str = "(pinned = 1 OR collection_id IS NOT NULL)";
 
@@ -272,9 +275,20 @@ impl Db {
             .optional()?;
         let target = match existing {
             Some(other) => {
+                // The edited text already exists: merge into it, keeping the
+                // pin, collection and tags of both.
                 tx.execute(
-                    "UPDATE clips SET used_at = ?1, use_count = use_count + 1 WHERE id = ?2",
-                    params![now(), other],
+                    "UPDATE clips SET
+                        used_at = ?1,
+                        use_count = clips.use_count + e.use_count,
+                        pinned = MAX(clips.pinned, e.pinned),
+                        collection_id = COALESCE(clips.collection_id, e.collection_id),
+                        tags = (SELECT json_group_array(value) FROM (
+                            SELECT value FROM json_each(clips.tags)
+                            UNION SELECT value FROM json_each(e.tags)))
+                     FROM (SELECT use_count, pinned, collection_id, tags FROM clips WHERE id = ?3) AS e
+                     WHERE clips.id = ?2",
+                    params![now(), other, id],
                 )?;
                 tx.execute("DELETE FROM clips WHERE id = ?1", params![id])?;
                 other
@@ -362,6 +376,7 @@ impl Db {
         self.forget_undo()?;
         let ids = serde_json::to_string(ids)?;
         let c = self.conn.lock();
+        *self.undo_since.lock() = Some(std::time::Instant::now());
         c.execute_batch(
             "CREATE TEMP TABLE IF NOT EXISTS undo_clips AS SELECT * FROM clips WHERE 0;
              CREATE TEMP TABLE IF NOT EXISTS undo_formats AS SELECT * FROM clip_formats WHERE 0;",
@@ -381,15 +396,34 @@ impl Db {
         )?)
     }
 
-    /// Put back the clips removed by the last `delete`. A clip copied again
-    /// in the meantime is not duplicated.
+    /// Put back the clips removed by the last `delete`, if it was less than
+    /// `UNDO_WINDOW` ago. A clip copied again in the meantime is not
+    /// duplicated; a collection deleted in the meantime is not recreated.
     pub fn undo_delete(&self) -> Result<usize> {
+        let fresh = self
+            .undo_since
+            .lock()
+            .is_some_and(|t| t.elapsed() < UNDO_WINDOW);
+        if !fresh {
+            self.forget_undo()?;
+            return Ok(0);
+        }
         let mut c = self.conn.lock();
         if !has_undo(&c)? {
             return Ok(0);
         }
         let tx = c.transaction()?;
-        let n = tx.execute("INSERT OR IGNORE INTO clips SELECT * FROM undo_clips", [])?;
+        let n = tx.execute(
+            "INSERT OR IGNORE INTO clips (id, kind, content, preview, language, tags, pinned,
+                collection_id, sensitive, has_rich, ocr_text, source_app, size_bytes, hash,
+                created_at, used_at, use_count)
+             SELECT id, kind, content, preview, language, tags, pinned,
+                CASE WHEN collection_id IN (SELECT id FROM collections) THEN collection_id END,
+                sensitive, has_rich, ocr_text, source_app, size_bytes, hash,
+                created_at, used_at, use_count
+             FROM undo_clips",
+            [],
+        )?;
         tx.execute(
             "INSERT OR IGNORE INTO clip_formats SELECT * FROM undo_formats
              WHERE clip_id IN (SELECT id FROM clips)",
@@ -397,11 +431,13 @@ impl Db {
         )?;
         tx.execute_batch("DELETE FROM undo_clips; DELETE FROM undo_formats;")?;
         tx.commit()?;
+        *self.undo_since.lock() = None;
         Ok(n)
     }
 
     /// Make the last deletion final: drop the kept rows and their image files.
     pub fn forget_undo(&self) -> Result<()> {
+        *self.undo_since.lock() = None;
         let files: Vec<String> = {
             let c = self.conn.lock();
             if !has_undo(&c)? {
@@ -484,16 +520,6 @@ impl Db {
         Ok(s)
     }
 
-    pub fn tags(&self) -> Result<Vec<(String, i64)>> {
-        let c = self.conn.lock();
-        let mut stmt = c.prepare_cached(
-            "SELECT j.value, COUNT(*) FROM clips, json_each(clips.tags) j
-             GROUP BY j.value ORDER BY 2 DESC, 1",
-        )?;
-        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
-        Ok(rows.collect::<rusqlite::Result<_>>()?)
-    }
-
     /// Applications clips were copied from, most frequent first.
     pub fn source_apps(&self) -> Result<Vec<SourceApp>> {
         let c = self.conn.lock();
@@ -508,39 +534,6 @@ impl Db {
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
-    }
-
-    /// Replace (`Some`) or remove (`None`) a tag on every clip carrying it.
-    pub fn edit_tag(&self, old: &str, new: Option<&str>) -> Result<usize> {
-        let mut c = self.conn.lock();
-        let tx = c.transaction()?;
-        let rows: Vec<(i64, String)> = {
-            let mut stmt = tx.prepare(
-                "SELECT id, tags FROM clips WHERE EXISTS (SELECT 1 FROM json_each(clips.tags) WHERE value = ?1)",
-            )?;
-            let rows = stmt.query_map(params![old], |r| Ok((r.get(0)?, r.get(1)?)))?;
-            rows.collect::<rusqlite::Result<_>>()?
-        };
-        for (id, json) in &rows {
-            let tags: Vec<String> = serde_json::from_str::<Vec<String>>(json)
-                .unwrap_or_default()
-                .into_iter()
-                .filter_map(|t| {
-                    if t == old {
-                        new.map(str::to_string)
-                    } else {
-                        Some(t)
-                    }
-                })
-                .collect();
-            let json = serde_json::to_string(&normalize_tags(&tags))?;
-            tx.execute(
-                "UPDATE clips SET tags = ?1 WHERE id = ?2",
-                params![json, id],
-            )?;
-        }
-        tx.commit()?;
-        Ok(rows.len())
     }
 
     /// Import a batch of clips inside one transaction. Returns how many were new.
@@ -615,12 +608,11 @@ impl Db {
 }
 
 fn has_undo(c: &rusqlite::Connection) -> Result<bool> {
-    Ok(c
-        .query_row(
-            "SELECT 1 FROM temp.sqlite_master WHERE name = 'undo_clips'",
-            [],
-            |_| Ok(()),
-        )
-        .optional()?
-        .is_some())
+    Ok(c.query_row(
+        "SELECT 1 FROM temp.sqlite_master WHERE name = 'undo_clips'",
+        [],
+        |_| Ok(()),
+    )
+    .optional()?
+    .is_some())
 }

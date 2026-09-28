@@ -46,7 +46,9 @@ fn clip_text(db: &Db, settings: &Settings, id: i64) -> Result<String, String> {
         .get(id)
         .map_err(|e| e.to_string())?
         .ok_or("Élément introuvable.")?;
-    if clip.sensitive && settings.ai_provider != "ollama" {
+    // A secret may only go to a model running on this very machine.
+    let on_this_machine = settings.ai_provider == "ollama" && is_loopback(&settings.ollama_url);
+    if clip.sensitive && !on_this_machine {
         return Err(
             "Cet élément contient un secret : il n'est pas envoyé à un service en ligne.".into(),
         );
@@ -172,25 +174,40 @@ fn client(timeout_s: u64) -> reqwest::Client {
         .unwrap_or_default()
 }
 
-/// Build `base + path`, refusing anything but http(s). When `secret` is true
-/// (an API key will be sent), plain http is only allowed to this machine.
+/// Build `base + path`, refusing anything but http(s) and addresses with
+/// credentials in them. When `secret` is true (an API key will be sent),
+/// plain http is only allowed to this machine.
 fn endpoint(base: &str, path: &str, secret: bool) -> Result<String, String> {
     let base = base.trim().trim_end_matches('/');
-    let lower = base.to_ascii_lowercase();
-    let local = ["http://localhost", "http://127.0.0.1", "http://[::1]"]
-        .iter()
-        .any(|p| {
-            lower == *p
-                || lower.starts_with(&format!("{p}:"))
-                || lower.starts_with(&format!("{p}/"))
-        });
-    if lower.starts_with("https://") || (lower.starts_with("http://") && (local || !secret)) {
-        Ok(format!("{base}{path}"))
-    } else if lower.starts_with("http://") {
-        Err("URL refusée : utilisez https:// pour envoyer une clé API.".into())
-    } else {
-        Err("URL invalide (http:// ou https:// attendu).".into())
+    let url = reqwest::Url::parse(base)
+        .map_err(|_| "URL invalide (http:// ou https:// attendu).".to_string())?;
+    if !url.username().is_empty() || url.password().is_some() || url.host_str().is_none() {
+        return Err("URL invalide.".into());
     }
+    match url.scheme() {
+        "https" => Ok(format!("{base}{path}")),
+        "http" if !secret || is_loopback(base) => Ok(format!("{base}{path}")),
+        "http" => Err("URL refusée : utilisez https:// pour envoyer une clé API.".into()),
+        _ => Err("URL invalide (http:// ou https:// attendu).".into()),
+    }
+}
+
+/// The address points to this machine (host parsed, not matched as text).
+fn is_loopback(base: &str) -> bool {
+    let Ok(url) = reqwest::Url::parse(base.trim()) else {
+        return false;
+    };
+    if !url.username().is_empty() || url.password().is_some() {
+        return false;
+    }
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
 }
 
 async fn error_body(r: reqwest::Response) -> String {
@@ -307,6 +324,12 @@ mod tests {
         assert!(endpoint("http://example.com", "/api", true).is_err());
         assert!(endpoint("http://192.168.1.2:11434", "/api", false).is_ok());
         assert!(endpoint("file:///etc/passwd", "", false).is_err());
+        assert!(endpoint("http://localhost:1@evil.com", "/api", true).is_err());
+        assert!(endpoint("http://user:pw@127.0.0.1", "/api", false).is_err());
+        assert!(is_loopback("http://127.0.0.1:11434"));
+        assert!(is_loopback("http://[::1]:11434"));
+        assert!(!is_loopback("http://192.168.1.2:11434"));
+        assert!(!is_loopback("http://localhost.evil.com"));
     }
 
     #[test]

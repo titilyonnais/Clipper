@@ -153,9 +153,17 @@ fn editing_text_merges_duplicates() {
         !db.get(a).unwrap().unwrap().has_rich,
         "stale formatting dropped"
     );
+    db.set_pinned(a, true).unwrap();
+    db.update_tags(a, &["travail".to_string()]).unwrap();
+    db.update_tags(b, &["perso".to_string()]).unwrap();
     assert_eq!(db.update_text(a, "final", false).unwrap(), b);
     assert!(db.get(a).unwrap().is_none());
-    assert_eq!(db.get(b).unwrap().unwrap().use_count, 2);
+    let merged = db.get(b).unwrap().unwrap();
+    assert_eq!(merged.use_count, 2);
+    assert!(merged.pinned, "the pin of the edited clip is kept");
+    let mut tags = merged.tags.clone();
+    tags.sort();
+    assert_eq!(tags, vec!["perso", "travail"]);
     std::fs::remove_dir_all(dir).ok();
 }
 
@@ -184,8 +192,6 @@ fn collections_group_and_protect_clips() {
     assert_eq!(listed.len(), 1);
     let other = db.create_collection("Perso").unwrap();
     assert!(db.rename_collection(other, "TRAVAIL").is_err());
-    db.reorder_collections(&[other, work]).unwrap();
-    assert_eq!(db.collections().unwrap()[0].id, other);
     db.delete_collection(work).unwrap();
     assert_eq!(db.get(filed).unwrap().unwrap().collection_id, None);
     assert_eq!(db.clear_history().unwrap(), 2);
@@ -234,7 +240,7 @@ fn snippets_crud_and_search() {
 }
 
 #[test]
-fn tags_are_normalized_and_renamed() {
+fn tags_are_normalized() {
     let (db, dir) = temp_db();
     let id = text(&db, "hello");
     db.update_tags(
@@ -243,9 +249,6 @@ fn tags_are_normalized_and_renamed() {
     )
     .unwrap();
     assert_eq!(db.get(id).unwrap().unwrap().tags, vec!["api", "work"]);
-    db.edit_tag("work", Some("job")).unwrap();
-    db.edit_tag("api", None).unwrap();
-    assert_eq!(db.tags().unwrap(), vec![("job".to_string(), 1)]);
     std::fs::remove_dir_all(dir).ok();
 }
 
@@ -428,8 +431,15 @@ fn legacy_paths_become_text() {
     }
     let db = Db::open(&dir).unwrap();
     let clips = db.list(&ListParams::default()).unwrap();
-    assert_eq!(clips.len(), 3, "a path already in the history is not duplicated");
-    let path = clips.iter().find(|c| c.preview == "C:\\Users\\moi\\Projet").unwrap();
+    assert_eq!(
+        clips.len(),
+        3,
+        "a path already in the history is not duplicated"
+    );
+    let path = clips
+        .iter()
+        .find(|c| c.preview == "C:\\Users\\moi\\Projet")
+        .unwrap();
     assert_eq!(path.kind, "text");
     assert_eq!(search(&db, "Projet"), vec![path.id]);
     let file = clips.iter().find(|c| c.kind == "file").unwrap();

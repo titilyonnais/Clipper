@@ -99,7 +99,7 @@ export function EmptyState({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+    <div className="flex h-full w-full flex-1 flex-col items-center justify-center px-8 text-center">
       {icon && <div className="mb-4 text-subtle-foreground [&_svg]:size-6">{icon}</div>}
       <p className="text-sm font-medium text-foreground">{title}</p>
       {children && <div className="mt-1.5 max-w-xs text-13 leading-relaxed text-muted-foreground">{children}</div>}
