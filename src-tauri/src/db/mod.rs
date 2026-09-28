@@ -17,7 +17,7 @@ use parking_lot::Mutex;
 use rusqlite::{params, Connection, OptionalExtension};
 use std::path::{Path, PathBuf};
 
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 
 pub struct Db {
     conn: Mutex<Connection>,
@@ -112,21 +112,26 @@ impl Db {
         }
 
         let tx = c.transaction()?;
-        tx.execute_batch(
-            "DROP TRIGGER IF EXISTS clips_ai;
-             DROP TRIGGER IF EXISTS clips_ad;
-             DROP TRIGGER IF EXISTS clips_au;
-             DROP TABLE IF EXISTS clips_fts;",
-        )?;
-        if version < 2 {
-            self.migrate_v1_data(&tx)?;
+        if version < 3 {
+            tx.execute_batch(
+                "DROP TRIGGER IF EXISTS clips_ai;
+                 DROP TRIGGER IF EXISTS clips_ad;
+                 DROP TRIGGER IF EXISTS clips_au;
+                 DROP TABLE IF EXISTS clips_fts;",
+            )?;
+            if version < 2 {
+                self.migrate_v1_data(&tx)?;
+            }
+            migrate_v2_to_v3(&tx)?;
         }
-        migrate_v2_to_v3(&tx)?;
+        fix_file_clips(&tx)?;
         tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         tx.commit()?;
-        // Reclaim the space freed by the migration and use incremental vacuum from now on.
-        c.pragma_update(None, "auto_vacuum", "INCREMENTAL")?;
-        c.execute_batch("VACUUM;")?;
+        if version < 3 {
+            // Reclaim the space freed by the migration and use incremental vacuum from now on.
+            c.pragma_update(None, "auto_vacuum", "INCREMENTAL")?;
+            c.execute_batch("VACUUM;")?;
+        }
         checkpoint(&c);
         Ok(())
     }
@@ -278,6 +283,57 @@ fn migrate_v2_to_v3(tx: &rusqlite::Transaction) -> Result<()> {
         "INSERT INTO clips_fts (rowid, content, ocr_text, tags)
          SELECT id, {FTS_CONTENT_OF_ROW}, COALESCE(ocr_text, ''), tags FROM clips;"
     ))?;
+    Ok(())
+}
+
+/// v3 -> v4: version 1 filed copied paths (plain text such as `C:\dossier`)
+/// as files, and prefixed file previews with an emoji. Paths become text
+/// again and file previews are rebuilt.
+fn fix_file_clips(tx: &rusqlite::Transaction) -> Result<()> {
+    use crate::clipboard::{classify, files_preview, hash_text, make_preview};
+    let rows: Vec<(i64, String, String)> = {
+        let mut stmt = tx.prepare("SELECT id, content, preview FROM clips WHERE kind = 'file'")?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        rows.collect::<rusqlite::Result<_>>()?
+    };
+    for (id, content, preview) in rows {
+        if let Ok(paths) = serde_json::from_str::<Vec<String>>(&content) {
+            let fixed = files_preview(&paths);
+            if fixed != preview {
+                tx.execute(
+                    "UPDATE clips SET preview = ?1 WHERE id = ?2",
+                    params![fixed, id],
+                )?;
+            }
+            continue;
+        }
+        let hash = hash_text(&content);
+        let duplicate = tx
+            .query_row(
+                "SELECT 1 FROM clips WHERE hash = ?1 AND id <> ?2",
+                params![hash, id],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some();
+        if duplicate {
+            tx.execute("DELETE FROM clips WHERE id = ?1", params![id])?;
+            continue;
+        }
+        let (kind, language) = classify(&content);
+        tx.execute(
+            "UPDATE clips SET kind = ?1, language = ?2, preview = ?3, hash = ?4, sensitive = ?5
+             WHERE id = ?6",
+            params![
+                kind,
+                language,
+                make_preview(&content),
+                hash,
+                crate::sensitive::detect(&content).is_some(),
+                id
+            ],
+        )?;
+    }
     Ok(())
 }
 

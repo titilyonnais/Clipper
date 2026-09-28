@@ -1,9 +1,9 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { CalendarDays, ChevronDown, Clock, ListOrdered, Pin, Search, Trash2, X } from "lucide-react";
+import { CalendarDays, Clock, ListOrdered, Pin, Search, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useClipList, useDebounced } from "@/lib/hooks";
 import { useSettings } from "@/lib/settings";
-import { appLabel, isEditable, plural } from "@/lib/utils";
+import { appLabel, cn, isEditable, plural } from "@/lib/utils";
 import { clipMenu, isText, run } from "@/clip/actions";
 import { ClipList, useSelection } from "@/clip/ClipList";
 import { Button, IconButton } from "@/ui/button";
@@ -11,6 +11,7 @@ import { Segmented } from "@/ui/form";
 import { Menu, useMenu } from "@/ui/menu";
 import { EmptyState, Kbd } from "@/ui/misc";
 import { toast } from "@/ui/toast";
+import { Splitter, type PanelWidth } from "@/ui/splitter";
 import { PreviewPanel } from "./PreviewPanel";
 import type { View } from "./Sidebar";
 import type { ClipKind, Collection, ListParams, TimeRange } from "@/types";
@@ -42,10 +43,11 @@ interface Props {
   collections: Collection[];
   onNewCollection: (assign?: number[]) => void;
   aiOnline: boolean;
+  listPanel: PanelWidth;
 }
 
 export const HistoryView = forwardRef<HistoryHandle, Props>(function HistoryView(
-  { view, title, collections, onNewCollection, aiOnline },
+  { view, title, collections, onNewCollection, aiOnline, listPanel },
   ref,
 ) {
   const { settings } = useSettings();
@@ -133,10 +135,11 @@ export const HistoryView = forwardRef<HistoryHandle, Props>(function HistoryView
   const menuClips = sel.marked.size > 1 && active && sel.marked.has(active.id) ? sel.selected : active ? [active] : [];
 
   return (
-    <div className="flex min-w-0 flex-1" onKeyDown={onKeyDown}>
-      <section className="flex w-[380px] shrink-0 flex-col border-r border-line" aria-label={title}>
+    <div className="flex min-w-0 flex-1 animate-in" onKeyDown={onKeyDown}>
+      <section className="flex shrink-0 flex-col" style={{ width: listPanel.width }} aria-label={title}>
         <div className="space-y-2.5 border-b border-line px-3.5 pt-3.5 pb-3">
-          <div className="relative">
+          <div className="flex gap-2">
+          <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-subtle-foreground" />
             <input
               ref={searchRef}
@@ -156,18 +159,28 @@ export const HistoryView = forwardRef<HistoryHandle, Props>(function HistoryView
               <Kbd className="absolute top-1/2 right-2 -translate-y-1/2">Ctrl F</Kbd>
             )}
           </div>
-          <div className="flex items-center justify-between gap-2">
-            <Segmented size="sm" label="Type" value={kind} onChange={setKind} options={KINDS} />
-            <Button
-              size="xs"
-              variant={range ? "secondary" : "ghost"}
+            <IconButton
+              label={range ? `Période : ${RANGES.find((r) => r.value === range)?.label}` : "Filtrer par date"}
+              size="lg"
+              variant={range ? "secondary" : "outline"}
+              active={!!range}
               onClick={(e) => rangeMenu.openBelow(e.currentTarget, "end")}
-              title="Filtrer par date"
+              className={cn("relative", !range && "border-input/70 bg-muted/60")}
             >
-              <CalendarDays /> {range ? RANGES.find((r) => r.value === range)?.label : ""}
-              <ChevronDown />
-            </Button>
+              <CalendarDays />
+              {range && <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-foreground" />}
+            </IconButton>
           </div>
+          <Segmented size="sm" stretch label="Type" value={kind} onChange={setKind} options={KINDS} />
+          {range && (
+            <div className="flex animate-in items-center gap-2 text-xs text-muted-foreground">
+              <CalendarDays className="size-3.5" />
+              {RANGES.find((r) => r.value === range)?.label}
+              <button type="button" className="ml-auto text-subtle-foreground hover:text-foreground" onClick={() => setRange(null)}>
+                Toutes les dates
+              </button>
+            </div>
+          )}
         </div>
 
         {sel.marked.size > 1 && (
@@ -225,6 +238,7 @@ export const HistoryView = forwardRef<HistoryHandle, Props>(function HistoryView
           ) : null}
         </div>
       </section>
+      <Splitter panel={listPanel} label="Largeur de la liste" />
 
       <PreviewPanel
         clip={active}

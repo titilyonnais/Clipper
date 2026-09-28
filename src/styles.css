@@ -110,8 +110,13 @@
   --text-base: 15px;
 
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
-  --animate-in: fade-in 180ms var(--ease-out-soft);
-  --animate-pop: pop-in 180ms var(--ease-out-soft);
+  --ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
+  --animate-in: fade-in 160ms var(--ease-out-soft);
+  --animate-pop: pop-in 170ms var(--ease-out-soft);
+  --animate-rise: rise-in 240ms var(--ease-out-soft) both;
+  --animate-dialog: dialog-in 220ms var(--ease-spring);
+  --animate-toast: toast-in 260ms var(--ease-spring);
+  --animate-window: window-in 190ms var(--ease-out-soft);
 
   @keyframes fade-in {
     from {
@@ -121,7 +126,31 @@
   @keyframes pop-in {
     from {
       opacity: 0;
-      transform: translateY(4px) scale(0.99);
+      transform: translateY(-4px) scale(0.97);
+    }
+  }
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+  @keyframes dialog-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.96);
+    }
+  }
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(12px) scale(0.95);
+    }
+  }
+  @keyframes window-in {
+    from {
+      opacity: 0;
+      transform: scale(0.985);
     }
   }
 }
@@ -209,6 +238,19 @@
   .compact .clamp-2 {
     -webkit-line-clamp: 1;
   }
+  /* The first rows of a list arrive one after the other. */
+  .stagger > * {
+    animation: var(--animate-rise);
+  }
+  .stagger > :nth-child(2) { animation-delay: 20ms; }
+  .stagger > :nth-child(3) { animation-delay: 40ms; }
+  .stagger > :nth-child(4) { animation-delay: 60ms; }
+  .stagger > :nth-child(5) { animation-delay: 80ms; }
+  .stagger > :nth-child(6) { animation-delay: 100ms; }
+  .stagger > :nth-child(7) { animation-delay: 120ms; }
+  .stagger > :nth-child(8) { animation-delay: 140ms; }
+  .stagger > :nth-child(9) { animation-delay: 160ms; }
+  .stagger > :nth-child(n + 10) { animation-delay: 180ms; }
 }
 
 pre code {

@@ -58,7 +58,11 @@ function useApplyAppearance(settings: SettingsView | null) {
   useEffect(() => {
     const root = document.documentElement;
     const mq = window.matchMedia("(prefers-color-scheme: light)");
-    const apply = () => root.classList.toggle("light", theme === "light" || (theme === "auto" && mq.matches));
+    const apply = () => {
+      const light = theme === "light" || (theme === "auto" && mq.matches);
+      root.classList.toggle("light", light);
+      api.setFrameTheme(light).catch(() => {});
+    };
     apply();
     root.classList.toggle("compact", density === "compact");
     if (theme !== "auto") return;

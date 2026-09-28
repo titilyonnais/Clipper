@@ -135,9 +135,13 @@ export function PreviewPanel({ clip, collections, editing, setEditing, onCopy, o
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-6 py-5">
         {editing && full ? (
-          <ClipEditor clip={full} inPopup={false} onDone={() => setEditing(false)} />
+          <div className="animate-in">
+            <ClipEditor clip={full} inPopup={false} onDone={() => setEditing(false)} />
+          </div>
         ) : (
-          <ClipContent clip={shown} />
+          <div key={`${clip.id}:${shown.content !== undefined}`} className="flex min-h-0 flex-1 animate-rise flex-col">
+            <ClipContent clip={shown} />
+          </div>
         )}
         <AiResult ai={ai} inPopup={false} />
       </div>

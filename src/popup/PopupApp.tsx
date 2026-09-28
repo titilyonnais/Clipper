@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronRight, ClipboardPaste, EyeOff, Folder, Scissors, Search, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, EyeOff, Folder, Keyboard, Scissors, Search, X } from "lucide-react";
 import { api, errorText } from "@/lib/api";
 import { useClipList, useDebounced, useTauriEvent } from "@/lib/hooks";
 import { useSettings } from "@/lib/settings";
@@ -9,6 +9,7 @@ import { ClipContent } from "@/clip/ClipContent";
 import { ClipEditor } from "@/clip/ClipEditor";
 import { ClipList, useSelection } from "@/clip/ClipList";
 import { useSnippets } from "@/main/SnippetsView";
+import { ShortcutHelp } from "@/main/SettingsView";
 import { IconButton } from "@/ui/button";
 import { Segmented } from "@/ui/form";
 import { Menu, useMenu } from "@/ui/menu";
@@ -26,6 +27,9 @@ export function PopupApp() {
   const [collection, setCollection] = useState<Collection | null>(null);
   const [target, setTarget] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [help, setHelp] = useState(false);
+  // Hidden between two appearances, so each opening fades in from nothing.
+  const [shown, setShown] = useState(true);
   const searchRef = useRef<HTMLInputElement>(null);
   const q = useDebounced(query.trim(), 60);
   // The search field is in the header, outside the panes: keys are routed
@@ -38,8 +42,15 @@ export function PopupApp() {
     setQuery("");
     setCollection(null);
     setEditing(false);
+    setHelp(false);
+    setShown(true);
     requestAnimationFrame(() => searchRef.current?.focus());
   });
+  useEffect(() => {
+    const onBlur = () => setShown(false);
+    window.addEventListener("blur", onBlur);
+    return () => window.removeEventListener("blur", onBlur);
+  }, []);
   useEffect(() => searchRef.current?.focus(), [tab, collection]);
 
   const switchTab = (t: Tab) => {
@@ -50,7 +61,17 @@ export function PopupApp() {
   };
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden border border-border bg-background" onKeyDown={(e) => keys.current?.(e)}>
+    <div
+      className={cn("relative flex h-screen flex-col overflow-hidden bg-background", shown ? "animate-window" : "opacity-0")}
+      onKeyDown={(e) => {
+        if (e.key === "F1" || (help && e.key === "Escape")) {
+          e.preventDefault();
+          setHelp((v) => !v && e.key === "F1");
+          return;
+        }
+        keys.current?.(e);
+      }}
+    >
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line pr-3 pl-4">
         {collection ? (
           <IconButton label="Retour aux collections" size="sm" onClick={() => setCollection(null)}>
@@ -121,20 +142,34 @@ export function PopupApp() {
         />
       )}
 
-      <footer className="flex h-9 shrink-0 items-center gap-4 border-t border-line px-4 text-xs text-subtle-foreground">
-        <Hint keys={["↵"]}>{settings?.paste_directly && target ? `Coller dans ${appLabel(target)}` : "Copier"}</Hint>
-        <Hint keys={["Maj", "↵"]}>Texte brut</Hint>
-        <Hint keys={["Ctrl", "1–9"]}>Accès direct</Hint>
-        <Hint keys={["Ctrl", "E"]}>Modifier</Hint>
-        <Hint keys={["Tab"]}>Onglet</Hint>
-        <span className="ml-auto flex items-center gap-3">
+      {help && (
+        <div className="absolute inset-x-0 top-14 bottom-10 z-20 flex animate-in flex-col bg-background/95 px-8 py-6 backdrop-blur-sm">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm text-foreground">Raccourcis clavier</h2>
+            <IconButton label="Fermer" size="sm" onClick={() => setHelp(false)}>
+              <X />
+            </IconButton>
+          </div>
+          <ShortcutHelp />
+        </div>
+      )}
+
+      <footer className="flex h-10 shrink-0 items-center gap-6 border-t border-line px-4 text-xs text-subtle-foreground">
+        <Hint keys={["Entrée"]}>{settings?.paste_directly && target ? `Coller dans ${appLabel(target)}` : "Copier"}</Hint>
+        <Hint keys={["Maj", "Entrée"]}>Texte brut</Hint>
+        <span className="ml-auto flex items-center gap-4">
           {settings?.paused_until && (
             <span className="flex items-center gap-1.5 text-warn">
               <EyeOff className="size-3.5" /> Capture suspendue
             </span>
           )}
-          <button type="button" className="hover:text-foreground" onClick={() => api.showMain()}>
-            Ouvrir Clipper <Kbd className="ml-1">Ctrl O</Kbd>
+          <button
+            type="button"
+            aria-pressed={help}
+            onClick={() => setHelp((v) => !v)}
+            className="flex items-center gap-2 rounded-ctl-sm transition-colors hover:text-foreground"
+          >
+            <Keyboard className="size-3.5" /> Raccourcis <Kbd>F1</Kbd>
           </button>
         </span>
       </footer>
@@ -147,12 +182,10 @@ type KeysRef = React.RefObject<KeyHandler | null>;
 
 function Hint({ keys, children }: { keys: string[]; children: React.ReactNode }) {
   return (
-    <span className="flex items-center gap-1.5 whitespace-nowrap">
-      <span className="flex gap-0.5">
+    <span className="flex items-center gap-2 whitespace-nowrap">
+      <span className="flex gap-1">
         {keys.map((k) => (
-          <Kbd key={k} className="h-[18px] min-w-[18px] px-1 text-[10.5px]">
-            {k}
-          </Kbd>
+          <Kbd key={k}>{k}</Kbd>
         ))}
       </span>
       {children}
@@ -345,19 +378,16 @@ function HistoryPane({
         ) : null}
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-auto p-4">
+      <div className="flex min-w-0 flex-1 flex-col overflow-auto p-4">
         {active && full?.id === active.id ? (
           editing ? (
-            <ClipEditor clip={full} inPopup onDone={() => setEditing(false)} />
+            <div className="animate-in">
+              <ClipEditor clip={full} inPopup onDone={() => setEditing(false)} />
+            </div>
           ) : (
-            <>
+            <div key={full.id} className="flex min-h-0 flex-1 animate-in flex-col">
               <ClipContent clip={full} compact />
-              {!active.sensitive && isText(active) && (
-                <p className="mt-auto flex items-center gap-1.5 text-xs text-subtle-foreground">
-                  <ClipboardPaste className="size-3.5" /> Double-clic ou Entrée pour coller
-                </p>
-              )}
-            </>
+            </div>
           )
         ) : null}
       </div>
@@ -414,7 +444,7 @@ function SnippetsPane({
   keys.current = onKeyDown;
   return (
     <div className="flex min-h-0 flex-1">
-      <div ref={listRef} className="w-[360px] shrink-0 overflow-y-auto border-r border-line px-2 py-1.5" role="listbox" aria-label="Snippets">
+      <div ref={listRef} className="stagger w-[360px] shrink-0 overflow-y-auto border-r border-line px-2 py-1.5" role="listbox" aria-label="Snippets">
         {snippets.map((s, i) => (
           <button
             key={s.id}
@@ -425,7 +455,7 @@ function SnippetsPane({
             onMouseDown={() => setIndex(i)}
             onDoubleClick={() => paste(() => api.pasteSnippet(s.id))}
             className={cn(
-              "flex w-full items-center gap-3 rounded-ctl px-2.5 py-2 text-left",
+              "flex w-full items-center gap-3 rounded-ctl px-2.5 py-2 text-left transition-colors duration-150",
               s === current ? "bg-selected" : "hover:bg-muted/60",
             )}
           >
@@ -488,7 +518,7 @@ function CollectionsPane({
 
   keys.current = onKeyDown;
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5" role="listbox" aria-label="Collections">
+    <div className="stagger min-h-0 flex-1 overflow-y-auto px-2 py-1.5" role="listbox" aria-label="Collections">
       {list.map((c, i) => (
         <button
           key={c.id}
@@ -497,7 +527,7 @@ function CollectionsPane({
           aria-selected={i === index}
           onMouseDown={() => setIndex(i)}
           onClick={() => onOpen(c)}
-          className={cn("flex w-full items-center gap-3 rounded-ctl px-2.5 py-2.5 text-left", i === index ? "bg-selected" : "hover:bg-muted/60")}
+          className={cn("flex w-full items-center gap-3 rounded-ctl px-2.5 py-2.5 text-left transition-colors duration-150", i === index ? "bg-selected" : "hover:bg-muted/60")}
         >
           <Folder className="size-4 text-muted-foreground" />
           <span className="flex-1 truncate text-sm">{c.name}</span>

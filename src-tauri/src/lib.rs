@@ -89,6 +89,7 @@ pub fn run() {
             commands::system::set_settings,
             commands::system::set_api_key,
             commands::system::notify_settings_changed,
+            commands::system::set_frame_theme,
             commands::system::enable_win_v,
             commands::system::disable_win_v,
             commands::system::set_incognito,
@@ -194,6 +195,9 @@ fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         ocr,
     });
 
+    if let Some(main) = app.get_webview_window(window::MAIN) {
+        window::style_frame(&main, false);
+    }
     window::create_popup(app)?;
     tray::build(app)?;
     if let Err(e) = register_shortcut(app, &settings) {

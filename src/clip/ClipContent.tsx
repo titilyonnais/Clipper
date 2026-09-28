@@ -142,14 +142,20 @@ function ImageContent({ clip, compact }: { clip: ClipItem; compact?: boolean }) 
 
 function FilesContent({ clipId }: { clipId: number }) {
   const [infos, setInfos] = useState<FileInfo[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [thumbs, setThumbs] = useState<Record<number, string>>({});
 
   useEffect(() => {
     let alive = true;
     const urls: string[] = [];
     setInfos(null);
+    setError(null);
     setThumbs({});
-    api.fileInfos(clipId).then(async (list) => {
+    api.fileInfos(clipId).catch((e) => {
+      if (alive) setError(errorText(e));
+      return null;
+    }).then(async (list) => {
+      if (!list) return;
       if (!alive) return;
       setInfos(list);
       const images = list.map((f, i) => [f, i] as const).filter(([f]) => f.exists && f.is_image).slice(0, 4);
@@ -171,6 +177,13 @@ function FilesContent({ clipId }: { clipId: number }) {
     };
   }, [clipId]);
 
+  if (error) {
+    return (
+      <p className="flex items-center gap-2 rounded-card border border-line bg-surface p-3 text-13 text-muted-foreground">
+        <AlertCircle className="size-4 shrink-0" /> {error}
+      </p>
+    );
+  }
   if (!infos) return null;
   const act = (p: Promise<void>) => p.catch((e) => toast(errorText(e), true));
 
@@ -191,8 +204,13 @@ function FilesContent({ clipId }: { clipId: number }) {
                 {f.exists ? <Icon className="size-4" /> : <AlertCircle className="size-4" />}
               </span>
               <div className="min-w-0 flex-1">
-                <div className="selectable truncate text-13 text-foreground">{name}</div>
-                <div className="truncate text-xs text-subtle-foreground">
+                <div className="selectable truncate text-13 text-foreground" title={f.path}>
+                  {name}
+                </div>
+                <div className="selectable truncate font-mono text-[11px] text-subtle-foreground" title={f.path}>
+                  {f.path.slice(0, Math.max(0, f.path.length - name.length - 1)) || f.path}
+                </div>
+                <div className="mt-0.5 truncate text-xs text-subtle-foreground">
                   {!f.exists
                     ? "N'existe plus à cet emplacement"
                     : f.is_dir

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Download, FolderOpen, RotateCcw, Upload } from "lucide-react";
 import { api, errorText } from "@/lib/api";
 import { useSettings } from "@/lib/settings";
@@ -6,7 +6,7 @@ import { cn, fullDate, humanBytes, plural } from "@/lib/utils";
 import { run } from "@/clip/actions";
 import { Button } from "@/ui/button";
 import { Dialog } from "@/ui/dialog";
-import { Field, Input, Row, Segmented, Switch, Textarea } from "@/ui/form";
+import { Field, Input, Row, Segmented, Switch, Textarea, useSlidingThumb } from "@/ui/form";
 import { Badge, Kbd, Logo } from "@/ui/misc";
 import { toast } from "@/ui/toast";
 import { ShortcutCapture } from "./ShortcutCapture";
@@ -27,10 +27,22 @@ const TABS: [Tab, string][] = [
 export function SettingsView({ stats }: { stats: Stats | null }) {
   const [tab, setTab] = useState<Tab>("shortcut");
   const { settings } = useSettings();
+  const navRef = useRef<HTMLElement>(null);
+  const thumb = useSlidingThumb(navRef, tab, '[aria-current="page"]');
   if (!settings) return null;
   return (
-    <div className="flex min-w-0 flex-1">
-      <nav className="w-60 shrink-0 space-y-px border-r border-line px-2.5 py-3" aria-label="Rubriques">
+    <div className="flex min-w-0 flex-1 animate-in">
+      <nav ref={navRef} className="relative w-60 shrink-0 space-y-px border-r border-line px-2.5 py-3" aria-label="Rubriques">
+        {thumb && (
+          <span
+            aria-hidden="true"
+            className={cn(
+              "absolute inset-x-2.5 top-0 rounded-ctl bg-selected",
+              thumb.animate && "transition-transform duration-200 ease-out-soft",
+            )}
+            style={{ height: thumb.height, transform: `translateY(${thumb.top}px)` }}
+          />
+        )}
         {TABS.map(([key, label]) => (
           <button
             key={key}
@@ -38,8 +50,8 @@ export function SettingsView({ stats }: { stats: Stats | null }) {
             onClick={() => setTab(key)}
             aria-current={tab === key ? "page" : undefined}
             className={cn(
-              "flex h-8 w-full items-center rounded-ctl px-2.5 text-left text-sm transition-colors",
-              tab === key ? "bg-selected text-foreground" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+              "relative flex h-8 w-full items-center rounded-ctl px-2.5 text-left text-sm transition-colors duration-150",
+              tab === key ? "text-foreground" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
             )}
           >
             {label}
@@ -47,7 +59,7 @@ export function SettingsView({ stats }: { stats: Stats | null }) {
         ))}
       </nav>
       <div className="min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-2xl px-8 py-8">
+        <div key={tab} className="mx-auto max-w-2xl animate-rise px-8 py-8">
           <h1 className="mb-6 text-xl text-foreground">{TABS.find(([k]) => k === tab)?.[1]}</h1>
           {tab === "shortcut" && <ShortcutSection />}
           {tab === "capture" && <CaptureSection />}
@@ -115,9 +127,9 @@ function ShortcutSection() {
     <>
       <Group>
         <div className="py-4">
-          <div className="flex items-start justify-between gap-6">
-            <div>
-              <div className="flex items-center gap-2 text-sm text-foreground">
+          <div className="flex items-center justify-between gap-8">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 text-sm whitespace-nowrap text-foreground">
                 Ouvrir Clipper avec <Kbd>Win</Kbd>
                 <Kbd>V</Kbd>
                 {winV && (settings.win_v_active ? <Badge tone="ok">Actif</Badge> : <Badge tone="warn">Explorateur à relancer</Badge>)}
@@ -183,6 +195,8 @@ export function ShortcutHelp() {
     [["Tab"], "Historique, snippets, collections"],
     [["Ctrl", "P"], "Épingler"],
     [["Ctrl", "O"], "Ouvrir la grande fenêtre"],
+    [["Ctrl", "Suppr"], "Supprimer"],
+    [["Échap"], "Fermer"],
   ];
   return (
     <div className="grid grid-cols-2 gap-x-6 gap-y-2.5 py-4">
@@ -306,7 +320,6 @@ function StorageSection({ stats }: { stats: Stats | null }) {
         </Row>
         <Row label="Supprimer les éléments inutilisés depuis">
           <Segmented
-            size="sm"
             label="Durée de conservation"
             value={settings.auto_delete_days}
             onChange={(v) => save({ auto_delete_days: v })}
@@ -324,17 +337,17 @@ function StorageSection({ stats }: { stats: Stats | null }) {
         <Row label="Sauvegarde quotidienne" hint="Copie de la base chaque jour ; les sept dernières sont gardées.">
           <Switch label="Sauvegarde quotidienne" checked={settings.backups_enabled} onChange={(v) => save({ backups_enabled: v })} />
         </Row>
-        <div className="py-3.5">
-          <div className="mb-2 flex items-center justify-between">
+        <div className="py-3">
+          <div className="mb-2 flex min-h-8 items-center justify-between">
             <span className="text-sm text-foreground">Restaurer</span>
-            <Button size="sm" variant="ghost" onClick={() => run(async () => setBackups(await api.backupNow()), "Sauvegarde créée.")}>
+            <Button variant="ghost" className="-mr-2.5" onClick={() => run(async () => setBackups(await api.backupNow()), "Sauvegarde créée.")}>
               Sauvegarder maintenant
             </Button>
           </div>
           {backups.length ? (
-            <ul className="space-y-1">
+            <ul className="-mx-2 space-y-0.5">
               {backups.map((b) => (
-                <li key={b.name} className="flex items-center justify-between gap-3 rounded-ctl px-2 py-1.5 text-13 hover:bg-muted/60">
+                <li key={b.name} className="flex h-9 items-center justify-between gap-3 rounded-ctl pr-1 pl-2 text-13 transition-colors hover:bg-muted/60">
                   <span className="text-foreground">{fullDate(b.created_at)}</span>
                   <span className="ml-auto text-xs text-subtle-foreground">{humanBytes(b.size)}</span>
                   <Button size="xs" variant="ghost" onClick={() => setConfirm(b)}>
@@ -350,11 +363,10 @@ function StorageSection({ stats }: { stats: Stats | null }) {
       </Group>
       <Group title="Données">
         <Row label="Exporter ou importer l'historique" hint="Fichier JSON, images et collections compris. L'import ignore ce qui existe déjà.">
-          <Button size="sm" onClick={() => run(async () => { const m = await api.exportHistory(); if (m) toast(m); })}>
+          <Button onClick={() => run(async () => { const m = await api.exportHistory(); if (m) toast(m); })}>
             <Download /> Exporter
           </Button>
           <Button
-            size="sm"
             onClick={() =>
               run(async () => {
                 const r = await api.importHistory();
@@ -365,13 +377,13 @@ function StorageSection({ stats }: { stats: Stats | null }) {
             <Upload /> Importer
           </Button>
         </Row>
-        <Row label="Dossier des données" hint={<span className="font-mono text-xs">{settings.data_dir}</span>}>
-          <Button size="sm" onClick={() => run(() => api.openDataFolder())}>
+        <Row label="Dossier des données" hint={<span className="font-mono text-xs break-all">{settings.data_dir}</span>}>
+          <Button onClick={() => run(() => api.openDataFolder())}>
             <FolderOpen /> Ouvrir
           </Button>
         </Row>
         <Row label="Effacer l'historique" hint="Définitif. Les épinglés, les collections et les snippets sont conservés.">
-          <Button size="sm" variant="danger" onClick={() => setConfirm("clear")}>
+          <Button variant="danger" onClick={() => setConfirm("clear")}>
             Effacer…
           </Button>
         </Row>
@@ -464,7 +476,7 @@ function AiSection() {
             ]}
           />
         </Row>
-        <p className="py-3.5 text-13 leading-relaxed text-muted-foreground">
+        <p className="py-3 text-13 leading-relaxed text-muted-foreground">
           {provider === "ollama"
             ? "Le texte est traité sur cet ordinateur par Ollama (ollama.com). Rien ne quitte votre machine."
             : "Le texte de l'élément est envoyé au fournisseur uniquement quand vous lancez une action IA, jamais s'il contient un secret. La clé reste dans le Gestionnaire d'identifiants de Windows."}

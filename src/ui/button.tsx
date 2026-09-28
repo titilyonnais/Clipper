@@ -41,7 +41,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       type={type}
       className={cn(
         "inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-ctl border font-medium",
-        "transition-colors duration-150 active:translate-y-px disabled:pointer-events-none disabled:opacity-40",
+        "transition-[background-color,color,border-color,transform] duration-150 ease-out-soft active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40",
         "[&_svg]:size-4 [&_svg]:shrink-0",
         VARIANTS[variant],
         SIZES[size],
@@ -72,8 +72,8 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       aria-label={label}
       aria-pressed={active}
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-ctl border transition-colors duration-150",
-        "active:translate-y-px disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-4",
+        "inline-flex shrink-0 items-center justify-center rounded-ctl border transition-[background-color,color,transform] duration-150 ease-out-soft",
+        "active:scale-[0.94] disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-4",
         VARIANTS[variant],
         active && "bg-secondary text-foreground",
         ICON_SIZES[size],

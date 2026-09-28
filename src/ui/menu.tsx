@@ -86,7 +86,7 @@ export function Menu({ anchor, entries, onClose }: { anchor: Anchor; entries: Me
       tabIndex={-1}
       onKeyDown={onKeyDown}
       style={{ left: pos?.left ?? anchor.x, top: pos?.top ?? anchor.y, visibility: pos ? "visible" : "hidden" }}
-      className="fixed z-50 min-w-48 animate-pop rounded-dialog border border-border bg-popover p-1.5 shadow-lg shadow-black/30 outline-none"
+      className="fixed z-50 min-w-48 origin-top animate-pop rounded-dialog border border-border bg-popover p-1.5 shadow-lg shadow-black/30 outline-none"
     >
       {entries.map((e, i) => {
         if ("separator" in e) return <div key={i} className="mx-1 my-1.5 h-px bg-line" />;
@@ -108,7 +108,7 @@ export function Menu({ anchor, entries, onClose }: { anchor: Anchor; entries: Me
               e.onSelect();
             }}
             className={cn(
-              "flex h-8 w-full items-center gap-2.5 rounded-[5px] px-2 text-left text-13 disabled:opacity-40",
+              "flex h-8 w-full items-center gap-2.5 rounded-[5px] px-2 text-left text-13 transition-colors duration-100 disabled:opacity-40",
               "[&_svg]:size-4 [&_svg]:shrink-0",
               e.danger ? "text-danger" : "text-foreground",
               active === i && (e.danger ? "bg-danger/10" : "bg-secondary"),
