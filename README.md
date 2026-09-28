@@ -1,3 +1,5 @@
+<img src="public/clipper.svg" width="56" alt="">
+
 # Clipper
 
 Gestionnaire de presse-papiers pour Windows 10/11 : historique local, recherche instantanée, catégories et tags, aperçu du code avec coloration syntaxique, actions IA facultatives (Ollama en local, Claude ou OpenAI).
@@ -6,20 +8,16 @@ Construit avec Tauri 2 (Rust + WebView2), React et SQLite.
 
 ## Fonctionnalités
 
-- Capture du texte, du code, des liens, des images et des fichiers copiés dans l'Explorateur.
-- Recherche plein texte (insensible aux accents), filtres par type, date, taille, catégorie, tags.
-- Épingler, favoris, catégories, tags ; « Copier en… » (minuscules, JSON, URL, Base64…).
-- Raccourci global configurable (par défaut `Ctrl+Shift+V`), icône dans la zone de notification.
-- Rétention automatique (durée et nombre maximal d'éléments), export / import JSON.
-- IA : résumer, expliquer, reformuler, corriger, traduire, classer automatiquement.
-
-## Confidentialité et sécurité
-
-- Tout est stocké localement dans `%APPDATA%\com.clipper.app\` (base SQLite + dossier `images`).
-- Aucune télémétrie, aucune connexion réseau, sauf si vous lancez une action IA (vers Ollama sur votre machine, ou vers le fournisseur choisi).
-- Les données marquées confidentielles par les gestionnaires de mots de passe (KeePass, Bitwarden, 1Password…) ne sont jamais enregistrées, et vous pouvez ignorer n'importe quelle application.
-- Les clés API sont conservées dans le Gestionnaire d'identifiants de Windows, jamais dans la base ni dans l'interface.
-- L'interface n'a accès ni au disque ni au réseau : elle ne peut agir que sur les éléments de l'historique, via des commandes Rust validées. Les programmes et scripts copiés ne sont jamais lancés depuis Clipper.
+- **Collage rapide** : Win+V (ou le raccourci de votre choix) ouvre une palette centrée sur l'écran. Entrée colle directement dans l'application où vous étiez, Maj+Entrée en texte brut, Ctrl+1…9 colle l'un des neuf premiers éléments.
+- **Historique complet** : texte, code (coloration syntaxique), liens, images et fichiers copiés dans l'Explorateur, avec la mise en forme d'origine (Word, Excel, web).
+- **Recherche instantanée**, y compris dans le texte des captures d'écran grâce à l'OCR intégré à Windows (hors ligne).
+- **Snippets** : textes permanents avec abréviation (`;sig`) et variables `{date}`, `{heure}`, `{jour}`, `{presse-papiers}`.
+- **File de collage** : sélectionnez plusieurs éléments, chaque Ctrl+V colle le suivant.
+- **Modifier avant de coller**, épingler, ranger dans des **collections** (par glisser-déposer), tags, filtre par application d'origine.
+- **Secrets masqués** : mots de passe, clés d'API, jetons et cartes bancaires sont détectés, masqués et exclus de la recherche.
+- **Mode incognito** (5 min, 1 h ou jusqu'à réactivation), applications ignorées, sauvegardes quotidiennes, export / import.
+- **IA facultative** : résumer, expliquer, reformuler, corriger, traduire, classer, avec Ollama en local, Claude ou OpenAI.
+- Thème noir ou clair (suit Windows), icône de notification qui suit le thème de la barre des tâches.
 
 ## Installer
 
@@ -62,20 +60,23 @@ cargo test --manifest-path src-tauri/Cargo.toml
 ## Architecture
 
 ```
-src/                     Interface React (TypeScript, Tailwind)
-  App.tsx                État, pagination, raccourcis clavier
-  components/            Liste, aperçu, paramètres, filtres…
-  lib/api.ts             Appels typés vers le backend
+src/                     Interface React (TypeScript, Tailwind v4)
+  main/                  Grande fenêtre : historique, snippets, paramètres, accueil
+  popup/                 Collage rapide
+  clip/                  Liste, aperçu, éditeur, actions, IA (partagés)
+  ui/                    Composants (boutons, champs, menus, dialogues)
 src-tauri/src/
-  lib.rs                 Démarrage, zone de notification, raccourci global, nettoyage horaire
-  clipboard.rs           Écoute du presse-papiers (AddClipboardFormatListener) et écriture
-  db.rs                  SQLite + FTS5, migrations, rétention
-  commands.rs            Commandes exposées à l'interface
-  ai.rs                  Ollama / OpenAI / Claude
-  secrets.rs             Clés API dans le Gestionnaire d'identifiants Windows
+  clipboard/             Capture événementielle, écriture, file de collage (rendu différé)
+  db/                    SQLite + FTS5, migrations, collections, snippets
+  commands/              Commandes exposées à l'interface
+  paste.rs               Collage direct dans l'application précédente
+  hotkey.rs              Prise en charge de Win+V
+  ocr.rs                 Windows.Media.Ocr
+  sensitive.rs           Détection des secrets
+  tray.rs, window.rs     Zone de notification, fenêtres
 ```
 
-La capture est événementielle : Clipper ne fait rien tant qu'une autre application ne modifie pas le presse-papiers, et ne l'ouvre que le temps de copier les données.
+La conception détaillée est dans [`docs/specs/2026-09-28-clipper-3-design.md`](docs/specs/2026-09-28-clipper-3-design.md).
 
 ## Signature du code
 

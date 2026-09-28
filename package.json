@@ -1,7 +1,7 @@
 {
   "name": "clipper",
   "private": true,
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Gestionnaire de presse-papiers pour Windows",
   "license": "MIT",
   "type": "module",
@@ -14,6 +14,8 @@
     "release": "node scripts/release.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/onest": "^5.3.1",
     "@tauri-apps/api": "^2.8.0",
     "highlight.js": "^11.11.1",
     "lucide-react": "^0.544.0",
@@ -21,12 +23,13 @@
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/cli": "^2.8.4",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.3",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^3.4.17",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5.9.2",
     "vite": "^7.1.7"
   }

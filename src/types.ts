@@ -5,10 +5,11 @@ export interface ClipItem {
   kind: ClipKind;
   preview: string;
   language: string | null;
-  category: string | null;
   tags: string[];
   pinned: boolean;
-  favorite: boolean;
+  collection_id: number | null;
+  sensitive: boolean;
+  has_rich: boolean;
   source_app: string | null;
   size_bytes: number;
   created_at: string;
@@ -17,6 +18,7 @@ export interface ClipItem {
   image_path: string | null;
   /** Only present when fetched with `api.get`. */
   content?: string;
+  ocr_text?: string | null;
 }
 
 export interface Stats {
@@ -27,8 +29,28 @@ export interface Stats {
   file: number;
   image: number;
   pinned: number;
-  favorites: number;
+  sensitive: number;
   disk_bytes: number;
+}
+
+export interface Collection {
+  id: number;
+  name: string;
+  count: number;
+}
+
+export interface Snippet {
+  id: number;
+  title: string;
+  abbreviation: string | null;
+  content: string;
+  use_count: number;
+  updated_at: string;
+}
+
+export interface SourceApp {
+  name: string;
+  count: number;
 }
 
 export type AiProvider = "ollama" | "openai" | "anthropic";
@@ -37,16 +59,21 @@ export type Density = "comfortable" | "compact";
 
 export interface Settings {
   theme: Theme;
-  accent_color: string;
   density: Density;
+  shortcut_mode: "win_v" | "custom";
   shortcut: string;
+  paste_directly: boolean;
+  always_plain_text: boolean;
   launch_at_startup: boolean;
   monitor_paused: boolean;
   ignore_apps: string[];
+  detect_secrets: boolean;
+  ocr_enabled: boolean;
+  keep_rich_text: boolean;
   max_items: number;
   auto_delete_days: number;
-  keep_favorites: boolean;
-  keep_pinned: boolean;
+  backups_enabled: boolean;
+  onboarded: boolean;
   ai_provider: AiProvider;
   ollama_url: string;
   ollama_model: string;
@@ -59,6 +86,9 @@ export interface SettingsView extends Settings {
   openai_key_set: boolean;
   anthropic_key_set: boolean;
   data_dir: string;
+  win_v_active: boolean;
+  /** RFC 3339 end of a timed pause, "forever", or null when capturing. */
+  paused_until: string | null;
 }
 
 export interface AiResponse {
@@ -68,10 +98,8 @@ export interface AiResponse {
 }
 
 export type AiAction = "summarize" | "explain" | "rephrase" | "fix" | "translate";
-export type CopyFormat = "trim" | "lowercase" | "uppercase" | "json_escape" | "url_encode" | "base64";
-export type SortMode = "recent" | "popular" | "oldest";
-/** A named range or a local day (YYYY-MM-DD). */
-export type TimeRange = "today" | "yesterday" | "week" | "month" | "year" | (string & {}) | null;
+export type CopyFormat = "trim" | "one_line" | "lowercase" | "uppercase" | "json_escape" | "url_encode" | "base64";
+export type TimeRange = "today" | "yesterday" | "week" | "month" | null;
 
 export interface FileInfo {
   path: string;
@@ -82,26 +110,14 @@ export interface FileInfo {
   is_image: boolean;
 }
 
-export interface AdvancedFilters {
-  kinds?: ClipKind[];
-  language?: string | null;
-  size_min?: number | null;
-  size_max?: number | null;
-  use_count_min?: number | null;
-  created_from?: string | null;
-  created_to?: string | null;
-  has_category?: boolean | null;
-  has_tags?: boolean | null;
-  tags?: string[];
-}
-
-export interface ListParams extends AdvancedFilters {
+export interface ListParams {
   query?: string;
-  category?: string | null;
+  kinds?: ClipKind[];
+  collection_id?: number | null;
+  source_app?: string | null;
+  tags?: string[];
   pinned_only?: boolean;
-  favorites_only?: boolean;
   time_range?: TimeRange;
-  sort?: SortMode;
   limit?: number;
   offset?: number;
 }
@@ -111,3 +127,17 @@ export interface ImportResult {
   skipped: number;
   total: number;
 }
+
+export interface BackupInfo {
+  name: string;
+  size: number;
+  created_at: string;
+}
+
+export interface QueueStatus {
+  active: boolean;
+  position: number;
+  total: number;
+}
+
+export type PasteOutcome = "pasted" | "copied";

@@ -1,5 +1,37 @@
 # Notes de version
 
+## 3.0.0
+
+Nouvelle interface et nouvelles fonctionnalités. L'historique existant est migré automatiquement.
+
+### Interface
+- Refonte complète dans le style de PostShip : noir pur, monochrome, police Onest, composants sobres.
+- Thème clair qui suit Windows, densité réglable.
+- Nouveau logo, icône de notification qui suit le thème de la barre des tâches et signale la pause.
+- Accueil en trois étapes au premier lancement.
+
+### Collage rapide
+- Nouveau popup centré (Win+V ou raccourci personnalisé) : recherche, onglets Historique / Snippets / Collections, Ctrl+1…9.
+- Collage direct dans l'application précédente, Maj+Entrée pour le texte brut.
+- Win+V remplace l'historique de Windows via le réglage officiel de l'Explorateur, sans hook clavier.
+
+### Fonctionnalités
+- Snippets avec abréviations et variables.
+- File de collage : chaque Ctrl+V colle l'élément suivant.
+- Modifier un élément avant de le coller.
+- OCR des images (moteur Windows, hors ligne) : le texte des captures est cherchable.
+- Conservation de la mise en forme riche (HTML, RTF).
+- Détection et masquage des secrets ; ils ne sont ni indexés ni envoyés à une IA en ligne.
+- Collections (remplacent les catégories), glisser-déposer, filtre par application avec son icône.
+- Mode incognito temporisé, sauvegardes quotidiennes avec restauration.
+- Aperçus : couleurs, liens, JSON formaté, nombre de mots et de lignes.
+
+### Corrections et technique
+- Base v3 : index de recherche sans contenu (ne peut pas contenir de secret), formats riches en table séparée, favoris fusionnés avec les épinglés.
+- Les éléments épinglés ou rangés dans une collection ne sont jamais supprimés automatiquement.
+- Plus aucune dépendance au web à l'exécution (polices intégrées).
+
+
 ## 2.0.0
 
 Refonte complète. L'ancienne base est migrée automatiquement au premier lancement.
