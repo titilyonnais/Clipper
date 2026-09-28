@@ -2,7 +2,10 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Permissions of the main window. Everything else goes through Clipper's own commands.",
-  "windows": ["main"],
+  "windows": [
+    "main",
+    "popup"
+  ],
   "permissions": [
     "core:event:allow-listen",
     "core:event:allow-unlisten",

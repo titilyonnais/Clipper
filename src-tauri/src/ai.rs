@@ -1,6 +1,6 @@
+use crate::credentials;
 use crate::db::Db;
 use crate::models::{AiResponse, Settings};
-use crate::secrets;
 use serde_json::{json, Value};
 use std::time::Duration;
 
@@ -41,8 +41,17 @@ fn instruction(action: &str, lang: Option<&str>) -> Result<String, String> {
     Ok(fixed.to_string())
 }
 
-fn clip_text(db: &Db, id: i64) -> Result<String, String> {
-    let (kind, content) = db.content(id).map_err(|e| e.to_string())?;
+fn clip_text(db: &Db, settings: &Settings, id: i64) -> Result<String, String> {
+    let clip = db
+        .get(id)
+        .map_err(|e| e.to_string())?
+        .ok_or("Élément introuvable.")?;
+    if clip.sensitive && settings.ai_provider != "ollama" {
+        return Err(
+            "Cet élément contient un secret : il n'est pas envoyé à un service en ligne.".into(),
+        );
+    }
+    let (kind, content) = (clip.kind, clip.content.unwrap_or_default());
     match kind.as_str() {
         "image" => Err("L'IA ne traite pas les images.".into()),
         "file" => Err("L'IA ne traite pas les fichiers.".into()),
@@ -57,8 +66,8 @@ fn clip_text(db: &Db, id: i64) -> Result<String, String> {
 pub async fn run(db: &Db, id: i64, action: &str, lang: Option<&str>) -> AiResponse {
     let result = async {
         let system = instruction(action, lang)?;
-        let content = clip_text(db, id)?;
         let settings = db.get_settings().map_err(|e| e.to_string())?;
+        let content = clip_text(db, &settings, id)?;
         complete(&settings, &system, &content).await
     }
     .await;
@@ -68,11 +77,11 @@ pub async fn run(db: &Db, id: i64, action: &str, lang: Option<&str>) -> AiRespon
     }
 }
 
-/// Ask the model for a category and tags, then apply them to the clip.
+/// Ask the model for a collection and tags, then apply them to the clip.
 pub async fn smart_tag(db: &Db, id: i64) -> AiResponse {
     let result = async {
-        let content = clip_text(db, id)?;
         let settings = db.get_settings().map_err(|e| e.to_string())?;
+        let content = clip_text(db, &settings, id)?;
         let system = "Tu classes des éléments de presse-papiers. Réponds uniquement avec un objet JSON \
             de la forme {\"category\": \"...\", \"tags\": [\"...\"]} : une catégorie courte en français \
             (1 à 2 mots, ex. \"Travail\", \"Code SQL\", \"Recette\") et 1 à 5 tags en minuscules, sans espaces.";
@@ -98,7 +107,9 @@ pub async fn smart_tag(db: &Db, id: i64) -> AiResponse {
             }
         }
         if let Some(cat) = category {
-            db.update_category(id, Some(cat)).map_err(|e| e.to_string())?;
+            let collection = db.create_collection(cat).map_err(|e| e.to_string())?;
+            db.set_collection(id, Some(collection))
+                .map_err(|e| e.to_string())?;
         }
         db.update_tags(id, &tags).map_err(|e| e.to_string())?;
         Ok(format!(
@@ -116,9 +127,9 @@ pub async fn smart_tag(db: &Db, id: i64) -> AiResponse {
 
 pub async fn health(settings: &Settings) -> AiResponse {
     match settings.ai_provider.as_str() {
-        "openai" if !secrets::is_set("openai") => AiResponse::err("Clé API OpenAI manquante."),
+        "openai" if !credentials::is_set("openai") => AiResponse::err("Clé API OpenAI manquante."),
         "openai" => AiResponse::ok(format!("OpenAI · {}", settings.openai_model)),
-        "anthropic" if !secrets::is_set("anthropic") => {
+        "anthropic" if !credentials::is_set("anthropic") => {
             AiResponse::err("Clé API Anthropic manquante.")
         }
         "anthropic" => AiResponse::ok(format!("Claude · {}", settings.anthropic_model)),
@@ -215,7 +226,7 @@ async fn ollama(s: &Settings, system: &str, content: &str) -> Result<String, Str
 }
 
 async fn openai(s: &Settings, system: &str, content: &str) -> Result<String, String> {
-    let key = secrets::get("openai").ok_or("Clé API OpenAI manquante (Paramètres › IA).")?;
+    let key = credentials::get("openai").ok_or("Clé API OpenAI manquante (Paramètres › IA).")?;
     let url = endpoint(&s.openai_base_url, "/v1/chat/completions", true)?;
     let body = json!({
         "model": s.openai_model,
@@ -242,7 +253,8 @@ async fn openai(s: &Settings, system: &str, content: &str) -> Result<String, Str
 }
 
 async fn anthropic(s: &Settings, system: &str, content: &str) -> Result<String, String> {
-    let key = secrets::get("anthropic").ok_or("Clé API Anthropic manquante (Paramètres › IA).")?;
+    let key =
+        credentials::get("anthropic").ok_or("Clé API Anthropic manquante (Paramètres › IA).")?;
     let model = s.anthropic_model.trim();
     let mut body = json!({
         "model": model,

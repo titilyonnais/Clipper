@@ -1,12 +1,13 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath } from "node:url";
 import pkg from "./package.json" with { type: "json" };
 
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
@@ -17,8 +18,8 @@ export default defineConfig({
   build: {
     // WebView2 is always a recent Chromium.
     target: "chrome120",
-    cssMinify: true,
     reportCompressedSize: false,
+    assetsInlineLimit: 0,
   },
   server: {
     port: 1420,

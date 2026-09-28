@@ -16,14 +16,15 @@
         "title": "Clipper",
         "width": 1180,
         "height": 760,
-        "minWidth": 900,
+        "minWidth": 880,
         "minHeight": 560,
         "center": true,
         "decorations": false,
         "resizable": true,
         "visible": false,
-        "skipTaskbar": true,
-        "shadow": true
+        "skipTaskbar": false,
+        "shadow": true,
+        "dragDropEnabled": false
       }
     ],
     "security": {
@@ -47,7 +48,10 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi"],
+    "targets": [
+      "nsis",
+      "msi"
+    ],
     "publisher": "titilyonnais",
     "homepage": "https://github.com/titilyonnais/Clipper",
     "copyright": "© 2026 titilyonnais — MIT",
@@ -65,7 +69,10 @@
       "digestAlgorithm": "sha256",
       "nsis": {
         "installMode": "currentUser",
-        "languages": ["French", "English"],
+        "languages": [
+          "French",
+          "English"
+        ],
         "displayLanguageSelector": false,
         "installerIcon": "icons/icon.ico"
       },

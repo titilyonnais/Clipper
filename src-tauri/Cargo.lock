@@ -501,7 +501,7 @@ dependencies = [
 
 [[package]]
 name = "clipper"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -523,6 +523,7 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
+ "windows 0.62.2",
  "windows-sys 0.61.2",
 ]
 
