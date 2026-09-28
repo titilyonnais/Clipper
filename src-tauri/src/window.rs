@@ -8,7 +8,10 @@ use tauri::{
 
 pub const MAIN: &str = "main";
 pub const POPUP: &str = "popup";
-const POPUP_SIZE: (f64, f64) = (820.0, 520.0);
+/// The popup window is transparent: the panel (820 x 520) is drawn by the
+/// interface with its own corners and shadow, inside a 32 px margin, so the
+/// whole panel can fade in and out.
+const POPUP_SIZE: (f64, f64) = (820.0 + 64.0, 520.0 + 64.0);
 
 pub fn create_popup(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     WebviewWindowBuilder::new(app, POPUP, WebviewUrl::App("index.html".into()))
@@ -22,11 +25,21 @@ pub fn create_popup(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .skip_taskbar(true)
         .visible(false)
         .focused(false)
-        .shadow(true)
-        .background_color(tauri::window::Color(0, 0, 0, 255))
+        .shadow(false)
+        .transparent(true)
         .drag_and_drop(false)
         .build()
-        .inspect(|w| style_frame(w, false))
+        .inspect(disable_transitions)
+}
+
+/// The popup plays its own entrance animation; Windows' generic one would
+/// run on top of it.
+fn disable_transitions(w: &WebviewWindow) {
+    use windows_sys::Win32::Graphics::Dwm::DWMWA_TRANSITIONS_FORCEDISABLED;
+    if let Ok(hwnd) = w.hwnd() {
+        let hwnd = hwnd.0 as windows_sys::Win32::Foundation::HWND;
+        set_dwm_attribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, &1i32);
+    }
 }
 
 /// Windows 11 draws a thin light frame around undecorated windows, brightest

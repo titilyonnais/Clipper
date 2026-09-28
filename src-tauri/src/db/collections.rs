@@ -68,28 +68,12 @@ impl Db {
         Ok(())
     }
 
-    /// Delete a collection. Its clips stay in the history.
+    /// Delete a collection. Its clips stay in the history as ordinary clips
+    /// (`ON DELETE SET NULL`), subject to retention again unless pinned.
     pub fn delete_collection(&self, id: i64) -> Result<()> {
-        let c = self.conn.lock();
-        c.execute(
-            "UPDATE clips SET collection_id = NULL WHERE collection_id = ?1",
-            params![id],
-        )?;
-        c.execute("DELETE FROM collections WHERE id = ?1", params![id])?;
-        Ok(())
-    }
-
-    /// Persist the display order given as a list of ids.
-    pub fn reorder_collections(&self, ids: &[i64]) -> Result<()> {
-        let mut c = self.conn.lock();
-        let tx = c.transaction()?;
-        for (position, id) in ids.iter().enumerate() {
-            tx.execute(
-                "UPDATE collections SET position = ?1 WHERE id = ?2",
-                params![position as i64, id],
-            )?;
-        }
-        tx.commit()?;
+        self.conn
+            .lock()
+            .execute("DELETE FROM collections WHERE id = ?1", params![id])?;
         Ok(())
     }
 }

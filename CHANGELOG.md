@@ -1,5 +1,35 @@
 # Notes de version
 
+## 3.3.0
+
+### Interface
+- Barre latérale : les icônes restent exactement à leur place quand on la replie ; le bouton de repli est dans la barre de titre, aligné sur elles. « Nouvelle collection » devient une ligne de la liste.
+- Filtres de type : des icônes (avec infobulles) remplacent les mots quand la liste est étroite ; le raccourci affiché dans la recherche disparaît au lieu de chevaucher le texte.
+- « Aucun élément sélectionné » est centré dans l'aperçu et aligné sur le message de la liste.
+- Collage rapide : panneau aux coins arrondis avec une ombre douce, apparition et disparition animées (Échap), lignes qui arrivent à chaque ouverture ; l'animation générique de Windows est désactivée.
+
+### Sécurité
+- Ouverture de fichiers : le chemin réel est résolu avant le contrôle (« programme.exe. » ne passe plus), liste d'extensions à risque étendue.
+- Import : les chemins réseau ou de périphérique sont refusés dans les listes de fichiers.
+- IA : l'adresse est analysée (plus de contournement par « localhost@… ») ; un secret n'est envoyé qu'à un modèle sur cette machine.
+- Export : les éléments sensibles ne sont plus exportés ; le fichier est écrit au fur et à mesure.
+- Secrets détectés aussi dans les longs textes (fichiers .env…) et dans le texte reconnu sur les images, qui n'est alors pas indexé.
+- Les éléments supprimés sont effacés du fichier de la base, pas seulement déréférencés.
+
+### Corrections
+- Désinstallation : Win+V est rendu à Windows si Clipper l'avait pris.
+- Si Win+V n'est pas encore libre, le raccourci personnalisé reste actif.
+- Relance de l'Explorateur : attend la fin du processus avant de le redémarrer.
+- Collage : plus de collage dans une fenêtre ouverte il y a longtemps quand le collage rapide est ouvert depuis Clipper ; message clair pour les applications lancées en administrateur.
+- Modifier un texte identique à un autre élément conserve épingle, collection et tags.
+- Annulation d'une suppression limitée à 15 secondes, y compris si la collection a été supprimée entre-temps.
+- Fichiers d'images orphelins supprimés au démarrage ; éléments sans image retirés après une restauration.
+- Sauvegardes : la copie ne bloque plus la capture ; les sauvegardes manuelles sont aussi limitées aux sept dernières.
+- Le presse-papiers est libéré avant la conversion des images (les autres applications ne sont plus bloquées).
+- Deux réglages modifiés rapidement sont tous deux enregistrés.
+- Fin d'une série de collages à la fermeture : le dernier élément reste bien dans le presse-papiers.
+- Code inutilisé retiré (commandes, fonctions, doublons).
+
 ## 3.2.0
 
 ### Raccourcis

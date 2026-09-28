@@ -75,6 +75,7 @@
           "English"
         ],
         "displayLanguageSelector": false,
+        "installerHooks": "./windows/hooks.nsh",
         "installerIcon": "icons/icon.ico"
       },
       "wix": {

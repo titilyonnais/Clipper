@@ -1,23 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  Clock,
-  Folder,
-  MoreHorizontal,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Pencil,
-  Pin,
-  Plus,
-  Scissors,
-  Settings as SettingsIcon,
-  Trash2,
-} from "lucide-react";
+import { ChevronDown, Clock, Folder, MoreHorizontal, Pencil, Pin, Plus, Scissors, Settings as SettingsIcon, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSettings } from "@/lib/settings";
 import { comboLabel, useKeymap } from "@/lib/shortcuts";
 import { appLabel, cn } from "@/lib/utils";
 import { run } from "@/clip/actions";
-import { IconButton } from "@/ui/button";
 import { useSlidingThumb } from "@/ui/form";
 import { Menu, useMenu } from "@/ui/menu";
 import { AppIcon } from "@/ui/misc";
@@ -31,7 +18,7 @@ export type View =
   | { kind: "collection"; id: number }
   | { kind: "app"; name: string };
 
-export function sameView(a: View, b: View) {
+function sameView(a: View, b: View) {
   if (a.kind !== b.kind) return false;
   if (a.kind === "collection" && b.kind === "collection") return a.id === b.id;
   if (a.kind === "app" && b.kind === "app") return a.name === b.name;
@@ -40,6 +27,13 @@ export function sameView(a: View, b: View) {
 
 /** A collection being created inline, optionally with clips to file into it. */
 export type NewCollection = { assign?: number[] };
+
+/**
+ * Folded width: the 10 px side padding plus a 32 px row. Every row keeps its
+ * icon at the same place whether the sidebar is folded or not, so folding
+ * only hides the labels.
+ */
+export const FOLDED_WIDTH = 52;
 
 interface Props {
   view: View;
@@ -50,24 +44,13 @@ interface Props {
   snippetCount: number;
   width: number;
   collapsed: boolean;
-  onToggleCollapsed: () => void;
   creating: NewCollection | null;
   onCreating: (c: NewCollection | null) => void;
+  /** A name is being typed: the sidebar must stay unfolded. */
+  onNaming: (naming: boolean) => void;
 }
 
-export function Sidebar({
-  view,
-  onView,
-  stats,
-  collections,
-  apps,
-  snippetCount,
-  width,
-  collapsed,
-  onToggleCollapsed,
-  creating,
-  onCreating,
-}: Props) {
+export function Sidebar({ view, onView, stats, collections, apps, snippetCount, width, collapsed, creating, onCreating, onNaming }: Props) {
   const { settings } = useSettings();
   const keymap = useKeymap();
   const [dropTarget, setDropTarget] = useState<number | null>(null);
@@ -75,12 +58,13 @@ export function Sidebar({
   const [renaming, setRenaming] = useState<number | null>(null);
   const menu = useMenu();
   const [menuFor, setMenuFor] = useState<Collection | null>(null);
+  useEffect(() => onNaming(renaming !== null), [renaming, onNaming]);
 
   const visibleApps = showAllApps ? apps : apps.slice(0, 5);
   const navRef = useRef<HTMLElement>(null);
   const thumb = useSlidingThumb(
     navRef,
-    `${JSON.stringify(view)}|${collections.length}|${visibleApps.length}|${collapsed}|${!!creating}|${renaming}`,
+    `${JSON.stringify(view)}|${collections.length}|${visibleApps.length}|${!!creating}|${renaming}`,
     '[aria-current="page"]',
   );
 
@@ -103,21 +87,18 @@ export function Sidebar({
       onView({ kind: "collection", id });
     });
 
-  const newCollectionLabel = `Nouvelle collection (${comboLabel(keymap.new_collection)})`;
-
   return (
     <aside
-      className="flex shrink-0 flex-col bg-background transition-[width] duration-200 ease-out-soft"
-      style={{ width: collapsed ? 60 : width }}
+      className="flex shrink-0 flex-col overflow-hidden bg-background transition-[width] duration-200 ease-out-soft"
+      style={{ width: collapsed ? FOLDED_WIDTH : width }}
       aria-label="Navigation"
     >
-      <nav ref={navRef} className={cn("relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto py-3", collapsed ? "px-2" : "px-2.5")}>
+      <nav ref={navRef} className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2.5 py-3">
         {thumb && (
           <span
             aria-hidden="true"
             className={cn(
-              "absolute top-0 rounded-ctl bg-selected",
-              collapsed ? "inset-x-2" : "inset-x-2.5",
+              "absolute inset-x-2.5 top-0 rounded-ctl bg-selected",
               thumb.animate && "transition-[transform,height] duration-200 ease-out-soft",
             )}
             style={{ height: thumb.height, transform: `translateY(${thumb.top}px)` }}
@@ -129,22 +110,9 @@ export function Sidebar({
           {item({ kind: "snippets" }, "Snippets", <Scissors />, snippetCount)}
         </div>
 
-        <Section
-          title="Collections"
-          collapsed={collapsed}
-          action={
-            <IconButton label={newCollectionLabel} size="sm" onClick={() => onCreating(creating ? null : {})}>
-              <Plus />
-            </IconButton>
-          }
-        >
-          {collections.length === 0 && !creating && !collapsed && (
-            <p className="px-2 py-1 text-xs leading-relaxed text-subtle-foreground">
-              Créez une collection avec le bouton +, puis glissez-y des éléments.
-            </p>
-          )}
+        <Section title="Collections" collapsed={collapsed}>
           {collections.map((c) =>
-            renaming === c.id && !collapsed ? (
+            renaming === c.id ? (
               <NameInput
                 key={c.id}
                 initial={c.name}
@@ -201,8 +169,18 @@ export function Sidebar({
               </div>
             ),
           )}
-          {creating && !collapsed && (
+          {creating ? (
             <NameInput placeholder="Nom de la collection" onSubmit={create} onCancel={() => onCreating(null)} />
+          ) : (
+            <NavItem
+              active={false}
+              collapsed={collapsed}
+              muted
+              onClick={() => onCreating({})}
+              icon={<Plus />}
+              label="Nouvelle collection"
+              title={`Nouvelle collection (${comboLabel(keymap.new_collection)})`}
+            />
           )}
         </Section>
 
@@ -219,36 +197,30 @@ export function Sidebar({
                 count={a.count}
               />
             ))}
-            {apps.length > 5 && !collapsed && (
-              <button
-                type="button"
+            {apps.length > 5 && (
+              <NavItem
+                active={false}
+                collapsed={collapsed}
+                muted
                 onClick={() => setShowAllApps((v) => !v)}
-                className="h-7 px-2 text-xs text-subtle-foreground transition-colors hover:text-foreground"
-              >
-                {showAllApps ? "Afficher moins" : `Afficher tout (${apps.length})`}
-              </button>
+                icon={<ChevronDown className={cn("transition-transform duration-200", showAllApps && "rotate-180")} />}
+                label={showAllApps ? "Afficher moins" : `Afficher tout (${apps.length})`}
+              />
             )}
           </Section>
         )}
       </nav>
 
-      <div className={cn("flex gap-1 border-t border-line", collapsed ? "flex-col items-center p-2" : "items-center p-2.5")}>
-        <div className={cn(!collapsed && "min-w-0 flex-1")}>
-          <NavItem
-            active={view.kind === "settings"}
-            solid
-            collapsed={collapsed}
-            onClick={() => onView({ kind: "settings" })}
-            icon={<SettingsIcon />}
-            label="Paramètres"
-          />
-        </div>
-        <IconButton
-          label={`${collapsed ? "Déplier" : "Replier"} la barre latérale (${comboLabel(keymap.toggle_sidebar)})`}
-          onClick={onToggleCollapsed}
-        >
-          {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
-        </IconButton>
+      <div className="border-t border-line px-2.5 py-2.5">
+        <NavItem
+          active={view.kind === "settings"}
+          solid
+          collapsed={collapsed}
+          onClick={() => onView({ kind: "settings" })}
+          icon={<SettingsIcon />}
+          label="Paramètres"
+          title={`Paramètres (${comboLabel(keymap.settings)})`}
+        />
       </div>
 
       {menu.anchor && menuFor && (
@@ -256,14 +228,7 @@ export function Sidebar({
           anchor={menu.anchor}
           onClose={menu.close}
           entries={[
-            {
-              label: "Renommer",
-              icon: <Pencil />,
-              onSelect: () => {
-                if (collapsed) onToggleCollapsed();
-                setRenaming(menuFor.id);
-              },
-            },
+            { label: "Renommer", icon: <Pencil />, onSelect: () => setRenaming(menuFor.id) },
             {
               label: "Supprimer la collection",
               icon: <Trash2 />,
@@ -281,30 +246,27 @@ export function Sidebar({
   );
 }
 
-function Section({
-  title,
-  action,
-  collapsed,
-  children,
-}: {
-  title: string;
-  action?: React.ReactNode;
-  collapsed: boolean;
-  children: React.ReactNode;
-}) {
+/** Section heading; folded, it becomes a short rule of the same height. */
+function Section({ title, collapsed, children }: { title: string; collapsed: boolean; children: React.ReactNode }) {
   return (
-    <div className="mt-5">
-      {collapsed ? (
-        <div className="mb-2 flex flex-col items-center gap-2">
-          <div className="h-px w-6 bg-line" />
-          {action}
-        </div>
-      ) : (
-        <div className="mb-1 flex h-7 items-center justify-between pr-0.5 pl-2">
-          <h3 className="text-xs font-normal text-subtle-foreground">{title}</h3>
-          {action}
-        </div>
-      )}
+    <div className="mt-4">
+      <div className="relative mb-1 flex h-7 items-center px-2">
+        <h3
+          className={cn(
+            "text-xs font-normal whitespace-nowrap text-subtle-foreground transition-opacity duration-150",
+            collapsed && "opacity-0",
+          )}
+        >
+          {title}
+        </h3>
+        <span
+          aria-hidden="true"
+          className={cn(
+            "absolute top-1/2 left-2 h-px w-4 bg-border transition-opacity duration-150",
+            collapsed ? "opacity-100" : "opacity-0",
+          )}
+        />
+      </div>
       <div className="space-y-px">{children}</div>
     </div>
   );
@@ -365,7 +327,9 @@ function NavItem({
   count,
   trailing,
   solid,
+  muted,
   collapsed,
+  title,
 }: {
   active: boolean;
   onClick: () => void;
@@ -375,34 +339,37 @@ function NavItem({
   trailing?: React.ReactNode;
   /** Draw its own highlight (outside the list with the sliding indicator). */
   solid?: boolean;
-  collapsed?: boolean;
+  /** A secondary action rather than a place. */
+  muted?: boolean;
+  collapsed: boolean;
+  title?: string;
 }) {
+  const tooltip = title ?? (count !== undefined ? `${label} (${count})` : label);
   return (
     <button
       type="button"
       onClick={onClick}
-      title={collapsed ? (count !== undefined ? `${label} (${count})` : label) : undefined}
+      title={collapsed || title ? tooltip : undefined}
       aria-label={label}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "group relative flex h-8 items-center rounded-ctl text-left text-sm transition-colors duration-150",
+        "group relative flex h-8 w-full items-center gap-2.5 overflow-hidden rounded-ctl px-2 text-left text-sm whitespace-nowrap transition-colors duration-150",
         "[&_svg]:size-4 [&_svg]:shrink-0",
-        collapsed ? "mx-auto w-9 justify-center" : "w-full gap-2.5 px-2",
-        active ? cn("text-foreground", solid && "bg-selected") : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+        active
+          ? cn("text-foreground", solid && "bg-selected")
+          : cn("hover:bg-muted/60 hover:text-foreground", muted ? "text-subtle-foreground" : "text-muted-foreground"),
       )}
     >
-      <span className={cn("flex w-4 justify-center", active ? "text-foreground" : "text-subtle-foreground group-hover:text-foreground")}>
+      <span className={cn("flex w-4 shrink-0 justify-center", active ? "text-foreground" : "text-subtle-foreground group-hover:text-foreground")}>
         {icon}
       </span>
-      {!collapsed && (
-        <>
-          <span className="flex-1 truncate">{label}</span>
-          {trailing}
-          {count !== undefined && (
-            <span className={cn("tabular text-xs text-subtle-foreground", !!trailing && "group-hover:hidden")}>{count}</span>
-          )}
-        </>
-      )}
+      <span className={cn("flex min-w-0 flex-1 items-center gap-2.5 transition-opacity duration-150", collapsed && "opacity-0")}>
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        {!collapsed && trailing}
+        {count !== undefined && (
+          <span className={cn("tabular text-xs text-subtle-foreground", !!trailing && !collapsed && "group-hover:hidden")}>{count}</span>
+        )}
+      </span>
     </button>
   );
 }

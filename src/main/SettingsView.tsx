@@ -384,7 +384,7 @@ function StorageSection({ stats }: { stats: Stats | null }) {
         </div>
       </Group>
       <Group title="Données">
-        <Row label="Exporter ou importer l'historique" hint="Fichier JSON, images et collections compris. L'import ignore ce qui existe déjà.">
+        <Row label="Exporter ou importer l'historique" hint="Fichier JSON avec images et collections. Les éléments sensibles ne sont pas exportés ; l'import ignore ce qui existe déjà.">
           <Button onClick={() => run(async () => { const m = await api.exportHistory(); if (m) toast(m); })}>
             <Download /> Exporter
           </Button>

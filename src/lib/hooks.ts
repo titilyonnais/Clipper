@@ -56,6 +56,7 @@ export function useClipList(params: ListParams | null) {
     clearTimeout(timer.current);
     timer.current = setTimeout(() => load("refresh"), 50);
   });
+  useEffect(() => () => clearTimeout(timer.current), []);
 
   return {
     clips,
@@ -74,20 +75,4 @@ export function useDebounced<T>(value: T, ms: number): T {
     return () => clearTimeout(t);
   }, [value, ms]);
   return v;
-}
-
-/** Transient message cleared after a delay. */
-export function useFlash(ms = 1800) {
-  const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const flash = useCallback(
-    (text: string, error = false) => {
-      clearTimeout(timer.current);
-      setMessage({ text, error });
-      timer.current = setTimeout(() => setMessage(null), error ? ms * 2.5 : ms);
-    },
-    [ms],
-  );
-  useEffect(() => () => clearTimeout(timer.current), []);
-  return [message, flash] as const;
 }

@@ -45,12 +45,6 @@ export function plural(n: number, one: string, many = `${one}s`) {
   return `${n.toLocaleString("fr-FR")} ${n > 1 ? many : one}`;
 }
 
-export function isEditable(el: Element | null): boolean {
-  if (!el) return false;
-  const tag = el.tagName;
-  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (el as HTMLElement).isContentEditable;
-}
-
 /** Asset URL of an application's cached icon (may not exist). */
 export function appIconUrl(dataDir: string, exe: string): string {
   const safe = exe.replace(/[^\p{L}\p{N}._-]/gu, "");

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { api, errorText } from "./api";
 import { useTauriEvent } from "./hooks";
 import type { Settings, SettingsView } from "@/types";
@@ -17,32 +17,48 @@ const SettingsContext = createContext<Ctx>({
 });
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
-  const [settings, setSettings] = useState<SettingsView | null>(null);
+  const [settings, setState] = useState<SettingsView | null>(null);
+  // Latest known settings and the chain of pending saves: two quick changes
+  // are both kept, and saved in order.
+  const latest = useRef<SettingsView | null>(null);
+  const saving = useRef<Promise<unknown>>(Promise.resolve());
+  const setSettings = useCallback((s: SettingsView | null) => {
+    latest.current = s;
+    setState(s);
+  }, []);
   const reload = useCallback(() => {
     api.getSettings().then(setSettings);
-  }, []);
+  }, [setSettings]);
 
   useEffect(reload, [reload]);
   // Both windows share the settings: changes made in one reach the other.
   useTauriEvent("settings:changed", reload);
-  useTauriEvent<string | null>("monitor:paused", (e) =>
-    setSettings((s) => (s ? { ...s, paused_until: e.payload, monitor_paused: e.payload === "forever" } : s)),
-  );
+  useTauriEvent<string | null>("monitor:paused", (e) => {
+    const s = latest.current;
+    if (s) setSettings({ ...s, paused_until: e.payload, monitor_paused: e.payload === "forever" });
+  });
 
   const update = useCallback(
-    async (patch: Partial<Settings>) => {
-      if (!settings) return null;
-      const next = { ...settings, ...patch };
+    (patch: Partial<Settings>) => {
+      const current = latest.current;
+      if (!current) return Promise.resolve(null);
+      const next = { ...current, ...patch };
       setSettings(next);
-      try {
-        setSettings(await api.setSettings(next));
-        return null;
-      } catch (e) {
-        setSettings(settings);
-        return errorText(e);
-      }
+      const result = saving.current.then(async () => {
+        try {
+          const saved = await api.setSettings(latest.current ?? next);
+          // A later change may already be on its way: keep the newest.
+          if (latest.current === next) setSettings(saved);
+          return null;
+        } catch (e) {
+          reload();
+          return errorText(e);
+        }
+      });
+      saving.current = result;
+      return result;
     },
-    [settings],
+    [setSettings, reload],
   );
 
   useApplyAppearance(settings);

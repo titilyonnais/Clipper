@@ -29,9 +29,11 @@ interface Props {
   onCopy: (plain: boolean) => void;
   onNewCollection: () => void;
   aiOnline: boolean;
+  /** Height of the list toolbar: the empty state is centred on the same line as the list's. */
+  emptyOffset: number;
 }
 
-export function PreviewPanel({ clip, collections, editing, setEditing, onDirty, onCopy, onNewCollection, aiOnline }: Props) {
+export function PreviewPanel({ clip, collections, editing, setEditing, onDirty, onCopy, onNewCollection, aiOnline, emptyOffset }: Props) {
   const { settings, update } = useSettings();
   const keymap = useKeymap();
   const [full, setFull] = useState<ClipItem | null>(null);
@@ -68,7 +70,7 @@ export function PreviewPanel({ clip, collections, editing, setEditing, onDirty, 
 
   if (!clip) {
     return (
-      <section className="flex min-w-0 flex-1" aria-label="Aperçu">
+      <section className="flex min-w-0 flex-1 flex-col" style={{ paddingTop: emptyOffset }} aria-label="Aperçu">
         <EmptyState icon={<Logo />} title="Aucun élément sélectionné">
           Copiez quelque chose, ou ouvrez le collage rapide avec{" "}
           {settings?.shortcut_mode === "win_v" ? "Win+V" : settings?.shortcut || "votre raccourci"}.

@@ -11,6 +11,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindow
 
 /// Texts larger than this are not recorded (keeps the database small).
 pub const MAX_TEXT_BYTES: usize = 8 * 1024 * 1024;
+pub const MAX_IMAGE_BYTES: usize = 40 * 1024 * 1024;
 const MAX_RICH_BYTES: usize = 4 * 1024 * 1024;
 
 pub enum Content {
@@ -32,6 +33,8 @@ pub struct OwnerApp {
     pub path: String,
 }
 
+/// Why a clipboard change is not recorded (logged at debug level).
+#[derive(Debug)]
 pub enum Skip {
     OwnWrite,
     Ignored,
@@ -136,16 +139,32 @@ pub fn capture(ignore_apps: &[String], keep_rich: bool) -> Result<Captured, Skip
     {
         return Err(Skip::Ignored);
     }
-    let _guard = Clipboard::new_attempts(10).map_err(|_| Skip::Empty)?;
-    if excluded_by_owner() {
-        return Err(Skip::Private);
-    }
-    let content = read_content().ok_or(Skip::Empty)?;
-    let rich = match &content {
-        Content::Text(_) if keep_rich => read_rich(),
-        _ => RichFormats::default(),
+    // Other applications cannot use the clipboard while it is open: copy the
+    // raw data, close it, and only then convert anything.
+    let (read, rich) = {
+        let _guard = Clipboard::new_attempts(10).map_err(|_| Skip::Empty)?;
+        if excluded_by_owner() {
+            return Err(Skip::Private);
+        }
+        let read = read_content().ok_or(Skip::Empty)?;
+        let rich = match &read {
+            Read::Ready(Content::Text(_)) if keep_rich => read_rich(),
+            _ => RichFormats::default(),
+        };
+        (read, rich)
+    };
+    let content = match read {
+        Read::Ready(content) => content,
+        Read::Bitmap(bmp) => Content::Image(bmp_to_png(&bmp).ok_or(Skip::Empty)?),
     };
     Ok(Captured { content, rich, app })
+}
+
+/// What was read while the clipboard was open.
+enum Read {
+    Ready(Content),
+    /// A device-independent bitmap, converted to PNG once the clipboard is closed.
+    Bitmap(Vec<u8>),
 }
 
 fn read_raw(format: u32, max: usize) -> Option<Vec<u8>> {
@@ -168,11 +187,11 @@ fn read_rich() -> RichFormats {
 }
 
 /// Reads the most useful format. Must be called with the clipboard open.
-fn read_content() -> Option<Content> {
+fn read_content() -> Option<Read> {
     if raw::is_format_avail(formats::CF_HDROP) {
         let mut files: Vec<String> = Vec::new();
         if formats::FileList.read_clipboard(&mut files).is_ok() && !files.is_empty() {
-            return Some(Content::Files(files));
+            return Some(Read::Ready(Content::Files(files)));
         }
     }
     if raw::is_format_avail(formats::CF_UNICODETEXT)
@@ -180,18 +199,18 @@ fn read_content() -> Option<Content> {
     {
         let mut text = String::new();
         if formats::Unicode.read_clipboard(&mut text).is_ok() && !text.trim().is_empty() {
-            return Some(Content::Text(text));
+            return Some(Read::Ready(Content::Text(text)));
         }
     }
-    if let Some(png) = registered("PNG").and_then(|f| read_raw(f, 64 * 1024 * 1024)) {
+    if let Some(png) = registered("PNG").and_then(|f| read_raw(f, MAX_IMAGE_BYTES)) {
         if super::png_dimensions(&png).is_some() {
-            return Some(Content::Image(png));
+            return Some(Read::Ready(Content::Image(png)));
         }
     }
     if raw::is_format_avail(formats::CF_BITMAP) {
         let mut bmp = Vec::new();
         if formats::Bitmap.read_clipboard(&mut bmp).is_ok() {
-            return bmp_to_png(&bmp).map(Content::Image);
+            return Some(Read::Bitmap(bmp));
         }
     }
     None

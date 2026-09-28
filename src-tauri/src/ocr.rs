@@ -50,10 +50,16 @@ impl Ocr {
                     if kind != "image" {
                         continue;
                     }
-                    let text = std::fs::read(db.image_path(&file))
+                    let mut text = std::fs::read(db.image_path(&file))
                         .ok()
                         .and_then(|png| recognize(&engine, &png).ok())
                         .unwrap_or_default();
+                    // A capture showing a password or a key: masked like a
+                    // copied secret, and its text is never indexed.
+                    if crate::sensitive::detect(&text).is_some() {
+                        let _ = db.set_sensitive(id, true);
+                        text.clear();
+                    }
                     // An empty result is stored too, so the image is not retried.
                     if db.set_ocr_text(id, &text).is_ok() && !text.is_empty() {
                         on_done(id);
@@ -79,12 +85,13 @@ fn recognize(engine: &OcrEngine, png: &[u8]) -> windows::core::Result<String> {
     writer.DetachStream()?;
     stream.Seek(0)?;
     let decoder = BitmapDecoder::CreateAsync(&stream)?.join()?;
-    let mut bitmap = decoder.GetSoftwareBitmapAsync()?.join()?;
     let max = OcrEngine::MaxImageDimension()?;
-    if bitmap.PixelWidth()? as u32 > max || bitmap.PixelHeight()? as u32 > max {
-        // Too large for the engine: skip rather than recognise a crop.
+    if decoder.PixelWidth()? > max || decoder.PixelHeight()? > max {
+        // Too large for the engine: skip (before decoding) rather than
+        // recognise a crop.
         return Ok(String::new());
     }
+    let mut bitmap = decoder.GetSoftwareBitmapAsync()?.join()?;
     if bitmap.BitmapPixelFormat()? != BitmapPixelFormat::Bgra8 {
         bitmap = SoftwareBitmap::Convert(&bitmap, BitmapPixelFormat::Bgra8)?;
     }

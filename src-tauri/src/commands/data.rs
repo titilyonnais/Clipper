@@ -109,57 +109,71 @@ pub async fn export_history(
     };
     let path = path.into_path().map_err(err)?;
     let db = state.db.clone();
-    let written = tauri::async_runtime::spawn_blocking(move || -> CmdResult<usize> {
-        let collections: HashMap<i64, String> = db
-            .collections()
-            .map_err(err)?
-            .into_iter()
-            .map(|c| (c.id, c.name))
-            .collect();
-        let clips: Vec<serde_json::Value> = db
-            .export_rows()
-            .map_err(err)?
-            .into_iter()
-            .map(|c| {
-                // Images travel inside the export as base64 PNG.
-                let content = if c.kind == "image" {
-                    let png = c
-                        .image_path
-                        .as_ref()
-                        .and_then(|p| std::fs::read(p).ok())
-                        .unwrap_or_default();
-                    base64::engine::general_purpose::STANDARD.encode(png)
-                } else {
-                    c.content.clone().unwrap_or_default()
-                };
-                serde_json::json!({
-                    "kind": c.kind,
-                    "content": content,
-                    "language": c.language,
-                    "tags": c.tags,
-                    "pinned": c.pinned,
-                    "collection": c.collection_id.and_then(|id| collections.get(&id)),
-                    "sensitive": c.sensitive,
-                    "source_app": c.source_app,
-                    "created_at": c.created_at,
-                    "used_at": c.used_at,
-                    "use_count": c.use_count,
-                })
-            })
-            .collect();
-        let payload = serde_json::json!({
-            "app": "clipper",
-            "version": 3,
-            "exported_at": db::now(),
-            "clips": clips,
+    let (written, skipped) = tauri::async_runtime::spawn_blocking(move || write_export(&db, &path))
+        .await
+        .map_err(err)??;
+    Ok(Some(if skipped > 0 {
+        format!("{written} élément(s) exporté(s). {skipped} élément(s) sensible(s) non exporté(s).")
+    } else {
+        format!("{written} élément(s) exporté(s).")
+    }))
+}
+
+/// Write the export clip by clip (images are read one at a time), leaving
+/// out sensitive clips: an export is a plain file that may travel.
+/// Returns (exported, skipped).
+fn write_export(db: &Db, path: &std::path::Path) -> CmdResult<(usize, usize)> {
+    use std::io::Write;
+    let collections: HashMap<i64, String> = db
+        .collections()
+        .map_err(err)?
+        .into_iter()
+        .map(|c| (c.id, c.name))
+        .collect();
+    let rows = db.export_rows().map_err(err)?;
+    let mut out = std::io::BufWriter::new(std::fs::File::create(path).map_err(err)?);
+    write!(
+        out,
+        r#"{{"app":"clipper","version":3,"exported_at":{},"clips":["#,
+        serde_json::Value::from(db::now())
+    )
+    .map_err(err)?;
+    let (mut written, mut skipped) = (0, 0);
+    for c in rows {
+        if c.sensitive {
+            skipped += 1;
+            continue;
+        }
+        // Images travel inside the export as base64 PNG.
+        let content = if c.kind == "image" {
+            let Some(png) = c.image_path.as_ref().and_then(|p| std::fs::read(p).ok()) else {
+                continue;
+            };
+            base64::engine::general_purpose::STANDARD.encode(png)
+        } else {
+            c.content.unwrap_or_default()
+        };
+        let item = serde_json::json!({
+            "kind": c.kind,
+            "content": content,
+            "language": c.language,
+            "tags": c.tags,
+            "pinned": c.pinned,
+            "collection": c.collection_id.and_then(|id| collections.get(&id)),
+            "source_app": c.source_app,
+            "created_at": c.created_at,
+            "used_at": c.used_at,
+            "use_count": c.use_count,
         });
-        let file = std::fs::File::create(&path).map_err(err)?;
-        serde_json::to_writer(std::io::BufWriter::new(file), &payload).map_err(err)?;
-        Ok(clips.len())
-    })
-    .await
-    .map_err(err)??;
-    Ok(Some(format!("{written} élément(s) exporté(s).")))
+        if written > 0 {
+            out.write_all(b",").map_err(err)?;
+        }
+        serde_json::to_writer(&mut out, &item).map_err(err)?;
+        written += 1;
+    }
+    out.write_all(b"]}").map_err(err)?;
+    out.flush().map_err(err)?;
+    Ok((written, skipped))
 }
 
 const MAX_IMPORT_BYTES: u64 = 1024 * 1024 * 1024;
@@ -247,6 +261,9 @@ pub fn import_file(db: &Db, path: &std::path::Path) -> CmdResult<ImportResult> {
                 let Ok(paths) = serde_json::from_str::<Vec<String>>(content) else {
                     continue;
                 };
+                if paths.is_empty() || !paths.iter().all(|p| files::is_local_path(p)) {
+                    continue;
+                }
                 (
                     content.to_string(),
                     clipboard::hash_files(&paths),
@@ -299,4 +316,45 @@ pub fn import_file(db: &Db, path: &std::path::Path) -> CmdResult<ImportResult> {
         skipped: total - imported,
         total,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::{NewClip, RichFormats};
+
+    fn add(db: &Db, text: &str, sensitive: bool) {
+        db.upsert_clip(&NewClip {
+            kind: "text",
+            content: text,
+            preview: text,
+            language: None,
+            source_app: None,
+            size_bytes: text.len() as i64,
+            hash: &clipboard::hash_text(text),
+            sensitive,
+            rich: &RichFormats::default(),
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn export_leaves_secrets_out_and_imports_back() {
+        let dir = std::env::temp_dir().join(format!("clipper-export-{}", std::process::id()));
+        let (a, b) = (dir.join("a"), dir.join("b"));
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        let source = Db::open(&a).unwrap();
+        add(&source, "compte rendu", false);
+        add(&source, "sk-ant-secret", true);
+        let file = dir.join("export.json");
+        assert_eq!(write_export(&source, &file).unwrap(), (1, 1));
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(!text.contains("sk-ant-secret"));
+
+        let target = Db::open(&b).unwrap();
+        assert_eq!(import_file(&target, &file).unwrap().imported, 1);
+        drop((source, target));
+        std::fs::remove_dir_all(dir).ok();
+    }
 }

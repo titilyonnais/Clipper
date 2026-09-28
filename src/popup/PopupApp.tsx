@@ -18,6 +18,8 @@ import { toast } from "@/ui/toast";
 import type { ClipItem, Collection, ListParams, Snippet } from "@/types";
 
 type Tab = "history" | "snippets" | "collections";
+/** Échap: play the exit animation, then hide the window. */
+const CLOSE_EVENT = "clipper:close";
 const TABS: Tab[] = ["history", "snippets", "collections"];
 
 export function PopupApp() {
@@ -28,8 +30,9 @@ export function PopupApp() {
   const [target, setTarget] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [help, setHelp] = useState(false);
-  // Hidden between two appearances, so each opening fades in from nothing.
-  const [shown, setShown] = useState(true);
+  // "hidden" between two appearances, so each opening starts from nothing;
+  // "closing" while the exit animation plays before the window hides.
+  const [phase, setPhase] = useState<"open" | "closing" | "hidden">("open");
   const searchRef = useRef<HTMLInputElement>(null);
   const q = useDebounced(query.trim(), 60);
   // The search field is in the header, outside the panes: keys are routed
@@ -43,13 +46,24 @@ export function PopupApp() {
     setCollection(null);
     setEditing(false);
     setHelp(false);
-    setShown(true);
+    setPhase("open");
     requestAnimationFrame(() => searchRef.current?.focus());
   });
+  // The window hides once the exit animation is over (also without animations).
   useEffect(() => {
-    const onBlur = () => setShown(false);
+    if (phase !== "closing") return;
+    const t = setTimeout(() => api.hidePopup(), 120);
+    return () => clearTimeout(t);
+  }, [phase]);
+  useEffect(() => {
+    const onBlur = () => setPhase("hidden");
+    const onClose = () => setPhase((p) => (p === "open" ? "closing" : p));
     window.addEventListener("blur", onBlur);
-    return () => window.removeEventListener("blur", onBlur);
+    window.addEventListener(CLOSE_EVENT, onClose);
+    return () => {
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener(CLOSE_EVENT, onClose);
+    };
   }, []);
   useEffect(() => searchRef.current?.focus(), [tab, collection]);
 
@@ -61,118 +75,133 @@ export function PopupApp() {
   };
 
   return (
+    // The transparent margin around the panel leaves room for its shadow;
+    // a click there closes the popup like a click outside it.
     <div
-      className={cn("relative flex h-screen flex-col overflow-hidden bg-background", shown ? "animate-window" : "opacity-0")}
-      onKeyDown={(e) => {
-        if (e.key === "F1" || (help && e.key === "Escape")) {
-          e.preventDefault();
-          setHelp((v) => !v && e.key === "F1");
-          return;
-        }
-        keys.current?.(e);
-      }}
+      className="h-screen p-8"
+      onMouseDown={(e) => e.target === e.currentTarget && window.dispatchEvent(new Event(CLOSE_EVENT))}
     >
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line pr-3 pl-4">
-        {collection ? (
-          <IconButton label="Retour aux collections" size="sm" onClick={() => setCollection(null)}>
-            <ArrowLeft />
-          </IconButton>
-        ) : (
-          <Search className="size-4 shrink-0 text-subtle-foreground" />
+      <div
+        className={cn(
+          "relative flex h-full flex-col overflow-hidden rounded-[10px] bg-background",
+          // Same soft shadow as a Windows 11 window, no outline.
+          "shadow-[0_8px_24px_-6px_rgb(0_0_0/0.55),0_1px_4px_rgb(0_0_0/0.3)]",
+          "[.light_&]:shadow-[0_8px_24px_-6px_rgb(0_0_0/0.22),0_1px_4px_rgb(0_0_0/0.08)]",
+          phase === "open" && "popup-open animate-popup-in",
+          phase === "closing" && "pointer-events-none animate-popup-out",
+          phase === "hidden" && "opacity-0",
         )}
-        <input
-          ref={searchRef}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          spellCheck={false}
-          autoFocus
-          aria-label="Rechercher"
-          placeholder={
-            collection
-              ? `Rechercher dans ${collection.name}…`
-              : tab === "snippets"
-                ? "Rechercher un snippet…"
-                : tab === "collections"
-                  ? "Rechercher une collection…"
-                  : "Rechercher, ou tapez l'abréviation d'un snippet…"
+        onKeyDown={(e) => {
+          if (e.key === "F1" || (help && e.key === "Escape")) {
+            e.preventDefault();
+            setHelp((v) => !v && e.key === "F1");
+            return;
           }
-          className="h-full min-w-0 flex-1 bg-transparent text-base text-foreground placeholder:text-subtle-foreground"
-        />
-        {query && (
-          <IconButton label="Effacer" size="xs" onClick={() => setQuery("")}>
-            <X />
-          </IconButton>
-        )}
-        <Segmented
-          size="sm"
-          label="Vue"
-          value={tab}
-          onChange={switchTab}
-          options={[
-            { value: "history", label: "Historique" },
-            { value: "snippets", label: "Snippets" },
-            { value: "collections", label: "Collections" },
-          ]}
-        />
-      </header>
-
-      {tab === "snippets" ? (
-        <SnippetsPane query={q} onTab={switchTab} clearQuery={query ? () => setQuery("") : undefined} keys={keys} />
-      ) : tab === "collections" && !collection ? (
-        <CollectionsPane
-          query={q}
-          onOpen={(c) => {
-            setCollection(c);
-            setQuery("");
-          }}
-          onTab={switchTab}
-          keys={keys}
-        />
-      ) : (
-        <HistoryPane
-          params={{ query: q || undefined, collection_id: collection?.id }}
-          rawQuery={query}
-          onTab={switchTab}
-          onBack={collection ? () => setCollection(null) : undefined}
-          editing={editing}
-          setEditing={setEditing}
-          dataDir={settings?.data_dir}
-          clearQuery={() => setQuery("")}
-          keys={keys}
-        />
-      )}
-
-      {help && (
-        <div className="absolute inset-x-0 top-14 bottom-10 z-20 flex animate-in flex-col bg-background/95 px-8 py-6 backdrop-blur-sm">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm text-foreground">Raccourcis clavier</h2>
-            <IconButton label="Fermer" size="sm" onClick={() => setHelp(false)}>
+          keys.current?.(e);
+        }}
+      >
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line pr-3 pl-4">
+          {collection ? (
+            <IconButton label="Retour aux collections" size="sm" onClick={() => setCollection(null)}>
+              <ArrowLeft />
+            </IconButton>
+          ) : (
+            <Search className="size-4 shrink-0 text-subtle-foreground" />
+          )}
+          <input
+            ref={searchRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            spellCheck={false}
+            autoFocus
+            aria-label="Rechercher"
+            placeholder={
+              collection
+                ? `Rechercher dans ${collection.name}…`
+                : tab === "snippets"
+                  ? "Rechercher un snippet…"
+                  : tab === "collections"
+                    ? "Rechercher une collection…"
+                    : "Rechercher, ou tapez l'abréviation d'un snippet…"
+            }
+            className="h-full min-w-0 flex-1 bg-transparent text-base text-foreground placeholder:text-subtle-foreground"
+          />
+          {query && (
+            <IconButton label="Effacer" size="xs" onClick={() => setQuery("")}>
               <X />
             </IconButton>
-          </div>
-          <ShortcutHelp />
-        </div>
-      )}
-
-      <footer className="flex h-10 shrink-0 items-center gap-6 border-t border-line px-4 text-xs text-subtle-foreground">
-        <Hint keys={["Entrée"]}>{settings?.paste_directly && target ? `Coller dans ${appLabel(target)}` : "Copier"}</Hint>
-        <Hint keys={["Maj", "Entrée"]}>Texte brut</Hint>
-        <span className="ml-auto flex items-center gap-4">
-          {settings?.paused_until && (
-            <span className="flex items-center gap-1.5 text-warn">
-              <EyeOff className="size-3.5" /> Capture suspendue
-            </span>
           )}
-          <button
-            type="button"
-            aria-pressed={help}
-            onClick={() => setHelp((v) => !v)}
-            className="flex items-center gap-2 rounded-ctl-sm transition-colors hover:text-foreground"
-          >
-            <Keyboard className="size-3.5" /> Raccourcis <Kbd>F1</Kbd>
-          </button>
-        </span>
-      </footer>
+          <Segmented
+            size="sm"
+            label="Vue"
+            value={tab}
+            onChange={switchTab}
+            options={[
+              { value: "history", label: "Historique" },
+              { value: "snippets", label: "Snippets" },
+              { value: "collections", label: "Collections" },
+            ]}
+          />
+        </header>
+
+        {tab === "snippets" ? (
+          <SnippetsPane query={q} onTab={switchTab} clearQuery={query ? () => setQuery("") : undefined} keys={keys} />
+        ) : tab === "collections" && !collection ? (
+          <CollectionsPane
+            query={q}
+            onOpen={(c) => {
+              setCollection(c);
+              setQuery("");
+            }}
+            onTab={switchTab}
+            keys={keys}
+          />
+        ) : (
+          <HistoryPane
+            params={{ query: q || undefined, collection_id: collection?.id }}
+            rawQuery={query}
+            onTab={switchTab}
+            onBack={collection ? () => setCollection(null) : undefined}
+            editing={editing}
+            setEditing={setEditing}
+            dataDir={settings?.data_dir}
+            clearQuery={() => setQuery("")}
+            keys={keys}
+          />
+        )}
+
+        {help && (
+          <div className="absolute inset-x-0 top-14 bottom-10 z-20 flex animate-in flex-col bg-background/95 px-8 py-6 backdrop-blur-sm">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-sm text-foreground">Raccourcis clavier</h2>
+              <IconButton label="Fermer" size="sm" onClick={() => setHelp(false)}>
+                <X />
+              </IconButton>
+            </div>
+            <ShortcutHelp />
+          </div>
+        )}
+
+        <footer className="flex h-10 shrink-0 items-center gap-6 border-t border-line px-4 text-xs text-subtle-foreground">
+          <Hint keys={["Entrée"]}>{settings?.paste_directly && target ? `Coller dans ${appLabel(target)}` : "Copier"}</Hint>
+          <Hint keys={["Maj", "Entrée"]}>Texte brut</Hint>
+          <span className="ml-auto flex items-center gap-4">
+            {settings?.paused_until && (
+              <span className="flex items-center gap-1.5 text-warn">
+                <EyeOff className="size-3.5" /> Capture suspendue
+              </span>
+            )}
+            <button
+              type="button"
+              aria-pressed={help}
+              onClick={() => setHelp((v) => !v)}
+              className="flex items-center gap-2 rounded-ctl-sm transition-colors hover:text-foreground"
+            >
+              <Keyboard className="size-3.5" /> Raccourcis <Kbd>F1</Kbd>
+            </button>
+          </span>
+        </footer>
+      </div>
     </div>
   );
 }
@@ -208,7 +237,7 @@ function commonKeys(e: React.KeyboardEvent, onTab: (t: Tab) => void, current: Ta
   }
   if (e.key === "Escape") {
     e.preventDefault();
-    if (!onEscape()) api.hidePopup();
+    if (!onEscape()) window.dispatchEvent(new Event(CLOSE_EVENT));
     return true;
   }
   return false;

@@ -81,7 +81,8 @@ fn finish_paste(
 ) -> CmdResult<PasteOutcome> {
     changed(app);
     let direct = state.db.get_settings().map_err(err)?.paste_directly;
-    if window.label() != POPUP || !direct {
+    // The popup stays open on an error, so that its message is seen.
+    if window.label() != POPUP || !direct || !crate::paste::can_paste()? {
         return Ok(PasteOutcome::Copied);
     }
     // Focus must be handed over while Clipper still owns it; hide afterwards.
@@ -246,14 +247,6 @@ pub async fn undo_delete(app: AppHandle, state: State<'_, AppState>) -> CmdResul
 #[tauri::command]
 pub async fn clear_history(app: AppHandle, state: State<'_, AppState>) -> CmdResult<usize> {
     let n = state.db.clear_history().map_err(err)?;
-    changed(&app);
-    Ok(n)
-}
-
-#[tauri::command]
-pub async fn cleanup_now(app: AppHandle, state: State<'_, AppState>) -> CmdResult<usize> {
-    let days = state.db.get_settings().map_err(err)?.auto_delete_days;
-    let n = state.db.cleanup_expired(days).map_err(err)?;
     changed(&app);
     Ok(n)
 }

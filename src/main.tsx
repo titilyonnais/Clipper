@@ -9,6 +9,8 @@ import "./styles.css";
 
 // One bundle, two windows: the label decides which interface to show.
 const isPopup = getCurrentWindow().label === "popup";
+// The popup window is transparent around its panel.
+document.documentElement.classList.toggle("popup-window", isPopup);
 
 // No browser context menu (reload, inspect…) outside of editable text.
 window.addEventListener("contextmenu", (e) => {

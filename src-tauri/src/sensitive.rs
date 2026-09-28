@@ -50,11 +50,46 @@ const SECRET_KEYS: &[&str] = &[
     "client_secret",
 ];
 
+/// Longer texts (a whole `.env` file, a log) are scanned line by line, up to
+/// this size, with the checks that do not misfire on prose or code.
+const MAX_SCAN: usize = 1024 * 1024;
+
+fn scan_long(t: &str) -> Option<&'static str> {
+    if t.contains("-----BEGIN") && t.contains("PRIVATE KEY-----") {
+        return Some("Clé privée");
+    }
+    for line in t
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && l.len() <= MAX_LEN)
+    {
+        if let Some(label) = secret_assignment(line) {
+            return Some(label);
+        }
+        for word in line.split_whitespace() {
+            let word = word.trim_matches(|c: char| "\"'`,;()[]{}<>".contains(c));
+            if KEY_PREFIXES
+                .iter()
+                .any(|(p, min)| word.starts_with(p) && word.len() >= *min && is_token_charset(word))
+            {
+                return Some("Clé d'API");
+            }
+            if is_jwt(word) {
+                return Some("Jeton");
+            }
+        }
+    }
+    None
+}
+
 /// Returns a short French label when `text` looks like a secret.
 pub fn detect(text: &str) -> Option<&'static str> {
     let t = text.trim();
-    if t.is_empty() || t.len() > MAX_LEN {
+    if t.is_empty() {
         return None;
+    }
+    if t.len() > MAX_LEN {
+        return (t.len() <= MAX_SCAN).then(|| scan_long(t)).flatten();
     }
     if t.contains("-----BEGIN") && t.contains("PRIVATE KEY-----") {
         return Some("Clé privée");
@@ -260,7 +295,21 @@ fn entropy(t: &str) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::detect;
+    use super::{detect, MAX_LEN};
+
+    #[test]
+    fn long_texts_are_scanned_line_by_line() {
+        let filler = "Une ligne de texte ordinaire, sans rien de particulier.
+"
+        .repeat(400);
+        let env = format!(
+            "{filler}API_KEY=sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789
+{filler}"
+        );
+        assert!(env.len() > MAX_LEN);
+        assert!(detect(&env).is_some());
+        assert!(detect(&filler).is_none(), "prose stays visible");
+    }
 
     #[test]
     fn flags_secrets() {

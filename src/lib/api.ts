@@ -35,7 +35,6 @@ export const api = {
   remove: (ids: number[]) => invoke<number>("delete_clips", { ids }),
   undoDelete: () => invoke<number>("undo_delete"),
   clearHistory: () => invoke<number>("clear_history"),
-  cleanupNow: () => invoke<number>("cleanup_now"),
 
   startQueue: (ids: number[]) => invoke<void>("start_queue", { ids }),
   stopQueue: () => invoke<void>("stop_queue"),
@@ -45,14 +44,10 @@ export const api = {
   createCollection: (name: string) => invoke<number>("create_collection", { name }),
   renameCollection: (id: number, name: string) => invoke<void>("rename_collection", { id, name }),
   deleteCollection: (id: number) => invoke<void>("delete_collection", { id }),
-  reorderCollections: (ids: number[]) => invoke<void>("reorder_collections", { ids }),
   setCollection: (ids: number[], collectionId: number | null) =>
     invoke<void>("set_collection", { ids, collectionId }),
 
-  tags: () => invoke<[string, number][]>("list_tags"),
   updateTags: (id: number, tags: string[]) => invoke<void>("update_tags", { id, tags }),
-  renameTag: (old: string, name: string) => invoke<number>("rename_tag", { old, new: name }),
-  deleteTag: (name: string) => invoke<number>("delete_tag", { name }),
 
   snippets: (query?: string) => invoke<Snippet[]>("list_snippets", { query: query || null }),
   saveSnippet: (snippet: Snippet) => invoke<number>("save_snippet", { snippet }),
