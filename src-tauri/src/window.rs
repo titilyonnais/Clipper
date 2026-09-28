@@ -8,10 +8,10 @@ use tauri::{
 
 pub const MAIN: &str = "main";
 pub const POPUP: &str = "popup";
-/// The popup window is transparent: the panel (820 x 520) is drawn by the
-/// interface with its own corners and shadow, inside a 32 px margin, so the
-/// whole panel can fade in and out.
-const POPUP_SIZE: (f64, f64) = (820.0 + 64.0, 520.0 + 64.0);
+/// The popup window is transparent and exactly the size of its panel, which
+/// the interface draws with rounded corners, so the whole panel can fade in
+/// and out.
+const POPUP_SIZE: (f64, f64) = (820.0, 520.0);
 
 pub fn create_popup(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     WebviewWindowBuilder::new(app, POPUP, WebviewUrl::App("index.html".into()))
@@ -29,15 +29,22 @@ pub fn create_popup(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .transparent(true)
         .drag_and_drop(false)
         .build()
-        .inspect(disable_transitions)
+        .inspect(bare_frame)
 }
 
-/// The popup plays its own entrance animation; Windows' generic one would
-/// run on top of it.
-fn disable_transitions(w: &WebviewWindow) {
-    use windows_sys::Win32::Graphics::Dwm::DWMWA_TRANSITIONS_FORCEDISABLED;
+/// The popup window is only a transparent canvas for its panel: Windows must
+/// draw nothing around it (no frame, shadow, rounded corners or opening
+/// animation, which would outline the transparent area in grey).
+fn bare_frame(w: &WebviewWindow) {
+    use windows_sys::Win32::Graphics::Dwm::{
+        DWMNCRP_DISABLED, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE, DWMWA_NCRENDERING_POLICY,
+        DWMWA_TRANSITIONS_FORCEDISABLED, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
+    };
     if let Ok(hwnd) = w.hwnd() {
         let hwnd = hwnd.0 as windows_sys::Win32::Foundation::HWND;
+        set_dwm_attribute(hwnd, DWMWA_NCRENDERING_POLICY, &DWMNCRP_DISABLED);
+        set_dwm_attribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &DWMWCP_DONOTROUND);
+        set_dwm_attribute(hwnd, DWMWA_BORDER_COLOR, &DWMWA_COLOR_NONE);
         set_dwm_attribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, &1i32);
     }
 }
