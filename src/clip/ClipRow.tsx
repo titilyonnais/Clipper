@@ -3,7 +3,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { Pin, Type } from "lucide-react";
 import { cn, timeAgo, appLabel } from "@/lib/utils";
 import { colorOf } from "@/lib/smart";
-import { AppIcon, Kbd } from "@/ui/misc";
+import { AppIcon } from "@/ui/misc";
 import { KindIcon, clipTitle } from "./kind";
 import type { ClipItem } from "@/types";
 
@@ -58,13 +58,19 @@ export const ClipRow = memo(function ClipRow({
       onDoubleClick={() => onActivate(clip.id)}
       onContextMenu={onContextMenu ? (e) => onContextMenu(clip.id, e) : undefined}
       className={cn(
-        "row-lazy group relative flex gap-3 rounded-ctl px-2.5",
+        "row-lazy group relative flex gap-3 rounded-ctl px-2.5 transition-colors duration-150",
         compact ? "items-center py-1.5" : "items-start py-2.5",
         active ? "bg-selected" : "hover:bg-muted/60",
         marked && "ring-1 ring-foreground/30 ring-inset",
       )}
     >
-      {active && <span className="absolute top-2 bottom-2 left-0 w-0.5 rounded-full bg-foreground" />}
+      <span
+        aria-hidden="true"
+        className={cn(
+          "absolute top-2 bottom-2 left-0 w-0.5 origin-center rounded-full bg-foreground transition-[opacity,transform] duration-200 ease-out-soft",
+          active ? "scale-y-100 opacity-100" : "scale-y-0 opacity-0",
+        )}
+      />
       {clip.kind === "image" && clip.image_path ? (
         <img
           src={convertFileSrc(clip.image_path)}
@@ -80,7 +86,7 @@ export const ClipRow = memo(function ClipRow({
       ) : (
         <span
           className={cn(
-            "flex shrink-0 items-center justify-center rounded-[5px] text-muted-foreground",
+            "flex shrink-0 items-center justify-center rounded-[5px] text-muted-foreground transition-colors duration-150",
             compact ? "size-7" : "mt-0.5 size-9",
             active ? "bg-secondary text-foreground" : "bg-muted",
           )}
@@ -123,9 +129,18 @@ export const ClipRow = memo(function ClipRow({
       </div>
 
       {compact && (
-        <div className="flex shrink-0 items-center gap-2 text-xs text-subtle-foreground">
+        <div className="flex shrink-0 items-center gap-2 text-xs whitespace-nowrap text-subtle-foreground">
           {clip.pinned && <Pin className="size-3" aria-label="Épinglé" />}
-          {number ? <Kbd>{number}</Kbd> : <span className="w-12 text-right">{timeAgo(clip.used_at)}</span>}
+          {number ? (
+            <span
+              title={`Ctrl+${number}`}
+              className={cn("tabular w-4 text-center font-mono text-[11px] transition-colors", active ? "text-muted-foreground" : "text-subtle-foreground/70")}
+            >
+              {number}
+            </span>
+          ) : (
+            <span className="tabular">{timeAgo(clip.used_at)}</span>
+          )}
         </div>
       )}
     </div>

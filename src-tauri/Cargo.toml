@@ -1,6 +1,6 @@
 [package]
 name = "clipper"
-version = "3.0.0"
+version = "3.1.0"
 description = "Clipper - gestionnaire de presse-papiers pour Windows"
 authors = ["titilyonnais"]
 license = "MIT"
@@ -39,6 +39,7 @@ clipboard-win = { version = "5", features = ["monitor"] }
 keyring = { version = "3", features = ["windows-native"] }
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
+  "Win32_Graphics_Dwm",
   "Win32_Graphics_Gdi",
   "Win32_System_DataExchange",
   "Win32_System_LibraryLoader",

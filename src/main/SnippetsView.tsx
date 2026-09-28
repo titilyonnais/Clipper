@@ -7,6 +7,7 @@ import { run } from "@/clip/actions";
 import { Button } from "@/ui/button";
 import { Input, Textarea } from "@/ui/form";
 import { EmptyState, Kbd } from "@/ui/misc";
+import { Splitter, type PanelWidth } from "@/ui/splitter";
 import type { Snippet } from "@/types";
 
 const VARIABLES: [string, string][] = [
@@ -27,7 +28,7 @@ export function useSnippets(query = "") {
   return snippets;
 }
 
-export function SnippetsView() {
+export function SnippetsView({ listPanel }: { listPanel: PanelWidth }) {
   const [query, setQuery] = useState("");
   const q = useDebounced(query.trim(), 100);
   const snippets = useSnippets(q);
@@ -71,8 +72,8 @@ export function SnippetsView() {
   };
 
   return (
-    <div className="flex min-w-0 flex-1">
-      <section className="flex w-[380px] shrink-0 flex-col border-r border-line" aria-label="Snippets">
+    <div className="flex min-w-0 flex-1 animate-in">
+      <section className="flex shrink-0 flex-col" style={{ width: listPanel.width }} aria-label="Snippets">
         <div className="flex gap-2 border-b border-line px-3.5 pt-3.5 pb-3">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-subtle-foreground" />
@@ -89,7 +90,7 @@ export function SnippetsView() {
             <Plus /> Nouveau
           </Button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5" role="listbox" aria-label="Snippets">
+        <div className="stagger min-h-0 flex-1 overflow-y-auto px-2 py-1.5" role="listbox" aria-label="Snippets">
           {snippets.map((s) => (
             <button
               key={s.id}
@@ -98,7 +99,7 @@ export function SnippetsView() {
               aria-selected={s.id === selected}
               onClick={() => setSelected(s.id)}
               className={cn(
-                "flex w-full flex-col gap-1 rounded-ctl px-3 py-2.5 text-left",
+                "flex w-full flex-col gap-1 rounded-ctl px-3 py-2.5 text-left transition-colors duration-150",
                 s.id === selected ? "bg-selected" : "hover:bg-muted/60",
               )}
             >
@@ -116,6 +117,7 @@ export function SnippetsView() {
           )}
         </div>
       </section>
+      <Splitter panel={listPanel} label="Largeur de la liste" />
 
       <section className="flex min-w-0 flex-1 flex-col" aria-label="Édition du snippet">
         {draft ? (

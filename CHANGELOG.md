@@ -1,5 +1,20 @@
 # Notes de version
 
+## 3.1.0
+
+### Interface
+- Plus de liseré blanc en haut des fenêtres : le cadre de Windows 11 prend la couleur du thème, coins arrondis conservés.
+- Collage rapide sans bordure, pied de page réduit à l'essentiel ; tous les raccourcis sont dans un panneau (F1).
+- Barre latérale et liste redimensionnables à la souris ou au clavier (double-clic pour revenir à la taille d'origine), largeurs mémorisées.
+- Animations : apparition du collage rapide, indicateur qui glisse dans les menus et les filtres, arrivée des éléments de la liste, fenêtres et notifications.
+- Filtres de l'historique : le calendrier ne déborde plus, il est à côté de la recherche.
+- Paramètres : libellés et contrôles alignés verticalement, contrôles de même hauteur partout.
+
+### Corrections
+- Les chemins copiés comme texte avec la version 1 (`C:\…`) étaient classés en fichiers et leur aperçu restait noir : ils redeviennent du texte (migration automatique de la base).
+- Les aperçus de fichiers affichent le dossier d'origine et une erreur explicite si la lecture échoue.
+- La date « il y a 19 h » ne passe plus sur deux lignes dans le collage rapide.
+
 ## 3.0.0
 
 Nouvelle interface et nouvelles fonctionnalités. L'historique existant est migré automatiquement.

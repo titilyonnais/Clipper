@@ -23,8 +23,41 @@ pub fn create_popup(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .visible(false)
         .focused(false)
         .shadow(true)
+        .background_color(tauri::window::Color(0, 0, 0, 255))
         .drag_and_drop(false)
         .build()
+        .inspect(|w| style_frame(w, false))
+}
+
+/// Windows 11 draws a thin light frame around undecorated windows, brightest
+/// along the top edge. Remove it, keep the rounded corners, and give the
+/// non-client area the colour of the theme so nothing shows on the edges.
+pub fn style_frame(w: &WebviewWindow, light: bool) {
+    use windows_sys::Win32::Graphics::Dwm::{
+        DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_COLOR_NONE, DWMWA_USE_IMMERSIVE_DARK_MODE,
+        DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
+    };
+    let Ok(hwnd) = w.hwnd() else {
+        return;
+    };
+    let hwnd = hwnd.0 as windows_sys::Win32::Foundation::HWND;
+    let caption: u32 = if light { 0x00FF_FFFF } else { 0 };
+    // Best effort: Windows 10 only knows the first attribute.
+    set_dwm_attribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &i32::from(!light));
+    set_dwm_attribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &DWMWCP_ROUND);
+    set_dwm_attribute(hwnd, DWMWA_BORDER_COLOR, &DWMWA_COLOR_NONE);
+    set_dwm_attribute(hwnd, DWMWA_CAPTION_COLOR, &caption);
+}
+
+fn set_dwm_attribute<T>(hwnd: windows_sys::Win32::Foundation::HWND, attribute: i32, value: &T) {
+    unsafe {
+        windows_sys::Win32::Graphics::Dwm::DwmSetWindowAttribute(
+            hwnd,
+            attribute as u32,
+            (value as *const T).cast(),
+            std::mem::size_of::<T>() as u32,
+        );
+    }
 }
 
 pub fn show_main(app: &AppHandle) {

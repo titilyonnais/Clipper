@@ -7,6 +7,7 @@ import { run } from "@/clip/actions";
 import { Button } from "@/ui/button";
 import { Dialog } from "@/ui/dialog";
 import { Input } from "@/ui/form";
+import { Splitter, usePanelWidth } from "@/ui/splitter";
 import { TitleBar } from "./TitleBar";
 import { Sidebar, type View } from "./Sidebar";
 import { HistoryView, viewTitle, type HistoryHandle } from "./HistoryView";
@@ -28,6 +29,10 @@ export function MainApp() {
   const history = useRef<HistoryHandle>(null);
   const snippets = useSnippets();
   const aiOnline = useAiOnline(settings);
+  const windowWidth = useWindowWidth();
+  const sidebar = usePanelWidth("sidebar", 224, 180, 320);
+  // The preview keeps at least 360 px.
+  const list = usePanelWidth("list", 380, 330, Math.max(330, Math.min(680, windowWidth - sidebar.width - 360)));
 
   const refresh = useCallback(() => {
     api.stats().then(setStats);
@@ -76,7 +81,9 @@ export function MainApp() {
           snippetCount={snippets.length}
           onNewCollection={() => setNameDialog({ mode: "create" })}
           onRenameCollection={(c) => setNameDialog({ mode: "rename", collection: c })}
+          width={sidebar.width}
         />
+        <Splitter panel={sidebar} label="Largeur de la barre latérale" />
         {showHistory && (
           <HistoryView
             key={JSON.stringify(view)}
@@ -86,9 +93,10 @@ export function MainApp() {
             collections={collections}
             onNewCollection={(assign) => setNameDialog({ mode: "create", assign })}
             aiOnline={aiOnline}
+            listPanel={list}
           />
         )}
-        {view.kind === "snippets" && <SnippetsView />}
+        {view.kind === "snippets" && <SnippetsView listPanel={list} />}
         {view.kind === "settings" && <SettingsView stats={stats} />}
       </div>
 
@@ -96,6 +104,16 @@ export function MainApp() {
       {settings && !settings.onboarded && !onboardingDone && <Onboarding onDone={() => setOnboardingDone(true)} />}
     </div>
   );
+}
+
+function useWindowWidth() {
+  const [width, setWidth] = useState(window.innerWidth);
+  useEffect(() => {
+    const onResize = () => setWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return width;
 }
 
 function CollectionNameDialog({ dialog, onClose }: { dialog: NameDialog; onClose: () => void }) {

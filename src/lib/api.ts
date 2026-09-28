@@ -75,6 +75,7 @@ export const api = {
   disableWinV: (restartExplorer: boolean) => invoke<void>("disable_win_v", { restartExplorer }),
   /** null resumes, 0 pauses until resumed, n pauses for n minutes. */
   setIncognito: (minutes: number | null) => invoke<void>("set_incognito", { minutes }),
+  setFrameTheme: (light: boolean) => invoke<void>("set_frame_theme", { light }),
   completeOnboarding: () => invoke<SettingsView>("complete_onboarding"),
 
   hidePopup: () => invoke<void>("hide_popup"),

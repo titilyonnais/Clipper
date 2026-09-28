@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Clock, Folder, MoreHorizontal, Pencil, Pin, Plus, Scissors, Settings as SettingsIcon, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSettings } from "@/lib/settings";
@@ -6,6 +6,7 @@ import { appLabel, cn } from "@/lib/utils";
 import { run } from "@/clip/actions";
 import { Menu, useMenu } from "@/ui/menu";
 import { AppIcon } from "@/ui/misc";
+import { useSlidingThumb } from "@/ui/form";
 import type { Collection, SourceApp, Stats } from "@/types";
 
 export type View =
@@ -32,9 +33,10 @@ interface Props {
   snippetCount: number;
   onNewCollection: () => void;
   onRenameCollection: (c: Collection) => void;
+  width: number;
 }
 
-export function Sidebar({ view, onView, stats, collections, apps, snippetCount, onNewCollection, onRenameCollection }: Props) {
+export function Sidebar({ view, onView, stats, collections, apps, snippetCount, onNewCollection, onRenameCollection, width }: Props) {
   const { settings } = useSettings();
   const [dropTarget, setDropTarget] = useState<number | null>(null);
   const [showAllApps, setShowAllApps] = useState(false);
@@ -53,10 +55,26 @@ export function Sidebar({ view, onView, stats, collections, apps, snippetCount, 
   };
 
   const visibleApps = showAllApps ? apps : apps.slice(0, 5);
+  const navRef = useRef<HTMLElement>(null);
+  const thumb = useSlidingThumb(
+    navRef,
+    `${JSON.stringify(view)}|${collections.length}|${visibleApps.length}`,
+    '[aria-current="page"]',
+  );
 
   return (
-    <aside className="flex w-56 shrink-0 flex-col border-r border-line bg-background">
-      <nav className="min-h-0 flex-1 overflow-y-auto px-2.5 py-3">
+    <aside className="flex shrink-0 flex-col bg-background" style={{ width }}>
+      <nav ref={navRef} className="relative min-h-0 flex-1 overflow-y-auto px-2.5 py-3">
+        {thumb && (
+          <span
+            aria-hidden="true"
+            className={cn(
+              "absolute inset-x-2.5 top-0 rounded-ctl bg-selected",
+              thumb.animate && "transition-[transform,height] duration-200 ease-out-soft",
+            )}
+            style={{ height: thumb.height, transform: `translateY(${thumb.top}px)` }}
+          />
+        )}
         <div className="space-y-px">
           {item({ kind: "history" }, "Historique", <Clock />, stats?.total)}
           {item({ kind: "pinned" }, "Épinglés", <Pin />, stats?.pinned)}
@@ -152,7 +170,13 @@ export function Sidebar({ view, onView, stats, collections, apps, snippetCount, 
       </nav>
 
       <div className="border-t border-line p-2.5">
-        {item({ kind: "settings" }, "Paramètres", <SettingsIcon />)}
+        <NavItem
+          active={view.kind === "settings"}
+          solid
+          onClick={() => onView({ kind: "settings" })}
+          icon={<SettingsIcon />}
+          label="Paramètres"
+        />
       </div>
 
       {menu.anchor && menuFor && (
@@ -197,8 +221,11 @@ function NavItem({
   label,
   count,
   trailing,
+  solid,
 }: {
   active: boolean;
+  /** Draw its own highlight (outside the list with the sliding indicator). */
+  solid?: boolean;
   onClick: () => void;
   icon: React.ReactNode;
   label: string;
@@ -211,9 +238,9 @@ function NavItem({
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "group flex h-8 w-full items-center gap-2.5 rounded-ctl px-2 text-left text-sm transition-colors duration-150",
+        "group relative flex h-8 w-full items-center gap-2.5 rounded-ctl px-2 text-left text-sm transition-colors duration-150",
         "[&_svg]:size-4 [&_svg]:shrink-0",
-        active ? "bg-selected text-foreground" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+        active ? cn("text-foreground", solid && "bg-selected") : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
       )}
     >
       <span className={cn("flex w-4 justify-center", active ? "text-foreground" : "text-subtle-foreground")}>{icon}</span>

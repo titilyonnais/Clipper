@@ -31,7 +31,7 @@ export function ToastHost() {
         <div
           key={t.id}
           className={cn(
-            "flex max-w-md animate-pop items-center gap-2 rounded-ctl border border-border bg-popover px-3 py-2 text-13 shadow-lg shadow-black/30",
+            "flex max-w-md animate-toast items-center gap-2 rounded-ctl border border-border bg-popover px-3 py-2 text-13 shadow-lg shadow-black/30",
             t.error ? "text-danger" : "text-foreground",
           )}
         >

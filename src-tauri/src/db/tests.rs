@@ -380,6 +380,35 @@ fn migrates_v1_database() {
     std::fs::remove_dir_all(dir).ok();
 }
 
+#[test]
+fn legacy_paths_become_text() {
+    let dir = temp_dir("v3");
+    {
+        let db = Db::open(&dir).unwrap();
+        text(&db, "D:\\déjà là");
+        db.conn
+            .lock()
+            .execute_batch(
+                "INSERT INTO clips (kind, content, preview, hash, created_at, used_at) VALUES
+                    ('file', 'C:\\Users\\moi\\Projet', 'C:\\Users\\moi\\Projet', 'f:1', '2026-01-01T10:00:00.000Z', '2026-01-01T10:00:00.000Z'),
+                    ('file', 'D:\\déjà là', 'D:\\déjà là', 'f:2', '2026-01-01T10:00:00.000Z', '2026-01-01T10:00:00.000Z'),
+                    ('file', '[\"C:\\\\a\\\\rapport.pdf\"]', '📄 rapport.pdf', 'f:3', '2026-01-01T10:00:00.000Z', '2026-01-01T10:00:00.000Z');
+                 PRAGMA user_version = 3;",
+            )
+            .unwrap();
+    }
+    let db = Db::open(&dir).unwrap();
+    let clips = db.list(&ListParams::default()).unwrap();
+    assert_eq!(clips.len(), 3, "a path already in the history is not duplicated");
+    let path = clips.iter().find(|c| c.preview == "C:\\Users\\moi\\Projet").unwrap();
+    assert_eq!(path.kind, "text");
+    assert_eq!(search(&db, "Projet"), vec![path.id]);
+    let file = clips.iter().find(|c| c.kind == "file").unwrap();
+    assert_eq!(file.preview, "rapport.pdf");
+    drop(db);
+    std::fs::remove_dir_all(dir).ok();
+}
+
 /// Migration of a real profile: `CLIPPER_TEST_DIR=<copy> cargo test --release -- --ignored`
 #[test]
 #[ignore]

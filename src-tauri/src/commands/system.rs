@@ -85,6 +85,12 @@ pub fn notify_settings_changed(app: AppHandle) {
     settings_changed(&app);
 }
 
+/// The window edges follow the theme the interface resolved.
+#[tauri::command]
+pub fn set_frame_theme(light: bool, webview_window: tauri::WebviewWindow) {
+    crate::window::style_frame(&webview_window, light);
+}
+
 // ─── Win+V ───
 
 /// Take over Win+V: tell Explorer to release it, optionally restart Explorer,

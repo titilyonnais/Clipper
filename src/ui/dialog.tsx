@@ -37,7 +37,7 @@ export function Dialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-40 flex animate-in items-center justify-center bg-black/60 p-6"
+      className="fixed inset-0 z-40 flex animate-in items-center justify-center bg-black/60 p-6 backdrop-blur-[2px]"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
@@ -47,7 +47,7 @@ export function Dialog({
         aria-label={title}
         tabIndex={-1}
         className={cn(
-          "flex max-h-full w-full max-w-md animate-pop flex-col rounded-dialog border border-border bg-surface shadow-2xl shadow-black/40 outline-none",
+          "flex max-h-full w-full max-w-md animate-dialog flex-col rounded-dialog border border-border bg-surface shadow-2xl shadow-black/40 outline-none",
           className,
         )}
       >
