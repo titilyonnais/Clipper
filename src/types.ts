@@ -80,6 +80,8 @@ export interface Settings {
   openai_base_url: string;
   openai_model: string;
   anthropic_model: string;
+  /** Main-window shortcuts changed by the user: action id -> "Ctrl+P". */
+  shortcuts: Partial<Record<string, string>>;
 }
 
 export interface SettingsView extends Settings {

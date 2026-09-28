@@ -33,6 +33,7 @@ export const api = {
   setPinned: (ids: number[], pinned: boolean) => invoke<void>("set_pinned", { ids, pinned }),
   setSensitive: (id: number, sensitive: boolean) => invoke<void>("set_sensitive", { id, sensitive }),
   remove: (ids: number[]) => invoke<number>("delete_clips", { ids }),
+  undoDelete: () => invoke<number>("undo_delete"),
   clearHistory: () => invoke<number>("clear_history"),
   cleanupNow: () => invoke<number>("cleanup_now"),
 

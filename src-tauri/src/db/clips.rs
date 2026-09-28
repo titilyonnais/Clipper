@@ -355,12 +355,72 @@ impl Db {
             .is_some())
     }
 
+    /// Delete clips chosen by the user. They are kept aside (in temporary
+    /// tables, gone when Clipper quits) until the next deletion, so the last
+    /// one can be undone.
     pub fn delete(&self, ids: &[i64]) -> Result<usize> {
-        let mut n = 0;
-        for id in ids {
-            n += self.delete_where("id = ?1", &[id])?;
+        self.forget_undo()?;
+        let ids = serde_json::to_string(ids)?;
+        let c = self.conn.lock();
+        c.execute_batch(
+            "CREATE TEMP TABLE IF NOT EXISTS undo_clips AS SELECT * FROM clips WHERE 0;
+             CREATE TEMP TABLE IF NOT EXISTS undo_formats AS SELECT * FROM clip_formats WHERE 0;",
+        )?;
+        c.execute(
+            "INSERT INTO undo_clips SELECT * FROM clips WHERE id IN (SELECT value FROM json_each(?1))",
+            params![ids],
+        )?;
+        c.execute(
+            "INSERT INTO undo_formats SELECT * FROM clip_formats
+             WHERE clip_id IN (SELECT value FROM json_each(?1))",
+            params![ids],
+        )?;
+        Ok(c.execute(
+            "DELETE FROM clips WHERE id IN (SELECT value FROM json_each(?1))",
+            params![ids],
+        )?)
+    }
+
+    /// Put back the clips removed by the last `delete`. A clip copied again
+    /// in the meantime is not duplicated.
+    pub fn undo_delete(&self) -> Result<usize> {
+        let mut c = self.conn.lock();
+        if !has_undo(&c)? {
+            return Ok(0);
         }
+        let tx = c.transaction()?;
+        let n = tx.execute("INSERT OR IGNORE INTO clips SELECT * FROM undo_clips", [])?;
+        tx.execute(
+            "INSERT OR IGNORE INTO clip_formats SELECT * FROM undo_formats
+             WHERE clip_id IN (SELECT id FROM clips)",
+            [],
+        )?;
+        tx.execute_batch("DELETE FROM undo_clips; DELETE FROM undo_formats;")?;
+        tx.commit()?;
         Ok(n)
+    }
+
+    /// Make the last deletion final: drop the kept rows and their image files.
+    pub fn forget_undo(&self) -> Result<()> {
+        let files: Vec<String> = {
+            let c = self.conn.lock();
+            if !has_undo(&c)? {
+                return Ok(());
+            }
+            let files = {
+                let mut stmt = c.prepare("SELECT content FROM undo_clips WHERE kind = 'image'")?;
+                let rows = stmt.query_map([], |r| r.get(0))?;
+                rows.collect::<rusqlite::Result<_>>()?
+            };
+            c.execute_batch("DELETE FROM undo_clips; DELETE FROM undo_formats;")?;
+            files
+        };
+        for file in files {
+            if !self.image_in_use(&file)? {
+                let _ = std::fs::remove_file(self.image_path(&file));
+            }
+        }
+        Ok(())
     }
 
     /// Delete the history, keeping pinned clips and clips filed in a collection.
@@ -552,4 +612,15 @@ impl Db {
     pub fn checkpoint(&self) {
         checkpoint(&self.conn.lock());
     }
+}
+
+fn has_undo(c: &rusqlite::Connection) -> Result<bool> {
+    Ok(c
+        .query_row(
+            "SELECT 1 FROM temp.sqlite_master WHERE name = 'undo_clips'",
+            [],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some())
 }

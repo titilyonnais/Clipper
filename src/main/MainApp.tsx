@@ -3,36 +3,55 @@ import { api } from "@/lib/api";
 import { useTauriEvent } from "@/lib/hooks";
 import { useSettings } from "@/lib/settings";
 import { useAiOnline } from "@/lib/ai";
+import { actionFor, overlayOpen, useKeymap } from "@/lib/shortcuts";
 import { run } from "@/clip/actions";
-import { Button } from "@/ui/button";
-import { Dialog } from "@/ui/dialog";
-import { Input } from "@/ui/form";
 import { Splitter, usePanelWidth } from "@/ui/splitter";
 import { TitleBar } from "./TitleBar";
-import { Sidebar, type View } from "./Sidebar";
+import { Sidebar, type NewCollection, type View } from "./Sidebar";
 import { HistoryView, viewTitle, type HistoryHandle } from "./HistoryView";
 import { SnippetsView, useSnippets } from "./SnippetsView";
 import { SettingsView } from "./SettingsView";
 import { Onboarding } from "./Onboarding";
 import type { Collection, SourceApp, Stats } from "@/types";
 
-type NameDialog = { mode: "create"; assign?: number[] } | { mode: "rename"; collection: Collection };
+/** Below this window width the sidebar shows its icons only. */
+const NARROW = 1000;
+const COLLAPSED_KEY = "clipper.sidebar.collapsed";
 
 export function MainApp() {
   const { settings } = useSettings();
+  const keymap = useKeymap();
   const [view, setView] = useState<View>({ kind: "history" });
   const [stats, setStats] = useState<Stats | null>(null);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [apps, setApps] = useState<SourceApp[]>([]);
-  const [nameDialog, setNameDialog] = useState<NameDialog | null>(null);
+  const [creating, setCreating] = useState<NewCollection | null>(null);
   const [onboardingDone, setOnboardingDone] = useState(false);
   const history = useRef<HistoryHandle>(null);
   const snippets = useSnippets();
   const aiOnline = useAiOnline(settings);
+
+  // Sidebar: folded by choice (remembered), or automatically when the
+  // window is narrow, where Ctrl+B unfolds it for the moment.
   const windowWidth = useWindowWidth();
+  const narrow = windowWidth < NARROW;
+  const [folded, setFolded] = useState(() => readFlag(COLLAPSED_KEY));
+  const [peek, setPeek] = useState(false);
+  useEffect(() => setPeek(false), [narrow]);
+  const collapsed = !creating && (narrow ? !peek : folded);
+  const toggleSidebar = useCallback(() => {
+    if (narrow) setPeek((p) => !p);
+    else
+      setFolded((f) => {
+        writeFlag(COLLAPSED_KEY, !f);
+        return !f;
+      });
+  }, [narrow]);
+
   const sidebar = usePanelWidth("sidebar", 224, 180, 320);
+  const sidebarWidth = collapsed ? 60 : sidebar.width;
   // The preview keeps at least 360 px.
-  const list = usePanelWidth("list", 380, 330, Math.max(330, Math.min(680, windowWidth - sidebar.width - 360)));
+  const list = usePanelWidth("list", 380, 330, Math.max(330, Math.min(680, windowWidth - sidebarWidth - 360)));
 
   const refresh = useCallback(() => {
     api.stats().then(setStats);
@@ -49,22 +68,50 @@ export function MainApp() {
     if (view.kind !== "settings" && view.kind !== "snippets") history.current?.focusSearch();
   });
 
+  // Leaving a view with an unsaved edit asks first.
+  const go = useCallback((v: View) => {
+    if (history.current) history.current.guard(() => setView(v));
+    else setView(v);
+  }, []);
+
   // A deleted collection or an app with no clips left: back to the history.
   useEffect(() => {
     if (view.kind === "collection" && !collections.some((c) => c.id === view.id)) setView({ kind: "history" });
   }, [collections, view]);
 
+  const search = useCallback(() => {
+    if (view.kind === "settings" || view.kind === "snippets") go({ kind: "history" });
+    setTimeout(() => history.current?.focusSearch());
+  }, [view, go]);
+
+  // Window-wide shortcuts; the ones acting on items live in the history view.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key.toLowerCase() === "f" && !e.defaultPrevented) {
-        e.preventDefault();
-        if (view.kind === "settings" || view.kind === "snippets") setView({ kind: "history" });
-        setTimeout(() => history.current?.focusSearch());
+      if (e.defaultPrevented || overlayOpen()) return;
+      switch (actionFor(keymap, e)) {
+        case "search":
+          search();
+          break;
+        case "new_collection":
+          setCreating({});
+          break;
+        case "toggle_sidebar":
+          toggleSidebar();
+          break;
+        case "settings":
+          go({ kind: "settings" });
+          break;
+        case "undo":
+          run(() => api.undoDelete());
+          break;
+        default:
+          return;
       }
+      e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [view]);
+  }, [keymap, search, toggleSidebar, go]);
 
   const showHistory = view.kind !== "settings" && view.kind !== "snippets";
 
@@ -74,16 +121,18 @@ export function MainApp() {
       <div className="flex min-h-0 flex-1">
         <Sidebar
           view={view}
-          onView={setView}
+          onView={go}
           stats={stats}
           collections={collections}
           apps={apps}
           snippetCount={snippets.length}
-          onNewCollection={() => setNameDialog({ mode: "create" })}
-          onRenameCollection={(c) => setNameDialog({ mode: "rename", collection: c })}
           width={sidebar.width}
+          collapsed={collapsed}
+          onToggleCollapsed={toggleSidebar}
+          creating={creating}
+          onCreating={setCreating}
         />
-        <Splitter panel={sidebar} label="Largeur de la barre latérale" />
+        {collapsed ? <div className="w-px shrink-0 bg-line" /> : <Splitter panel={sidebar} label="Largeur de la barre latérale" />}
         {showHistory && (
           <HistoryView
             key={JSON.stringify(view)}
@@ -91,7 +140,7 @@ export function MainApp() {
             view={view}
             title={viewTitle(view, collections)}
             collections={collections}
-            onNewCollection={(assign) => setNameDialog({ mode: "create", assign })}
+            onNewCollection={(assign) => setCreating({ assign })}
             aiOnline={aiOnline}
             listPanel={list}
           />
@@ -100,10 +149,25 @@ export function MainApp() {
         {view.kind === "settings" && <SettingsView stats={stats} />}
       </div>
 
-      {nameDialog && <CollectionNameDialog dialog={nameDialog} onClose={() => setNameDialog(null)} />}
       {settings && !settings.onboarded && !onboardingDone && <Onboarding onDone={() => setOnboardingDone(true)} />}
     </div>
   );
+}
+
+function readFlag(key: string) {
+  try {
+    return localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeFlag(key: string, value: boolean) {
+  try {
+    localStorage.setItem(key, value ? "1" : "0");
+  } catch {
+    // Not remembered, nothing else to do.
+  }
 }
 
 function useWindowWidth() {
@@ -114,43 +178,4 @@ function useWindowWidth() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
   return width;
-}
-
-function CollectionNameDialog({ dialog, onClose }: { dialog: NameDialog; onClose: () => void }) {
-  const [name, setName] = useState(dialog.mode === "rename" ? dialog.collection.name : "");
-  const submit = () =>
-    run(async () => {
-      if (dialog.mode === "rename") {
-        await api.renameCollection(dialog.collection.id, name);
-      } else {
-        const id = await api.createCollection(name);
-        if (dialog.assign?.length) await api.setCollection(dialog.assign, id);
-      }
-      onClose();
-    });
-  return (
-    <Dialog
-      title={dialog.mode === "rename" ? "Renommer la collection" : "Nouvelle collection"}
-      description={dialog.mode === "create" ? "Les éléments rangés dans une collection ne sont jamais supprimés automatiquement." : undefined}
-      onClose={onClose}
-      footer={
-        <>
-          <Button onClick={onClose}>Annuler</Button>
-          <Button variant="primary" disabled={!name.trim()} onClick={submit}>
-            {dialog.mode === "rename" ? "Renommer" : "Créer"}
-          </Button>
-        </>
-      }
-    >
-      <Input
-        autoFocus
-        value={name}
-        maxLength={48}
-        placeholder="Travail, Code, Recettes…"
-        onChange={(e) => setName(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && name.trim() && submit()}
-        className="h-9"
-      />
-    </Dialog>
-  );
 }

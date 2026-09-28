@@ -96,6 +96,9 @@ pub struct Settings {
     pub openai_base_url: String,
     pub openai_model: String,
     pub anthropic_model: String,
+    /// Main-window shortcuts changed by the user (action id -> "Ctrl+P").
+    /// Actions not listed keep their default.
+    pub shortcuts: std::collections::BTreeMap<String, String>,
 }
 
 impl Default for Settings {
@@ -128,6 +131,7 @@ impl Default for Settings {
             openai_base_url: "https://api.openai.com".into(),
             openai_model: "gpt-5".into(),
             anthropic_model: "claude-opus-5".into(),
+            shortcuts: Default::default(),
         }
     }
 }

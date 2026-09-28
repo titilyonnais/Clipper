@@ -10,13 +10,15 @@ import { Field, Input, Row, Segmented, Switch, Textarea, useSlidingThumb } from 
 import { Badge, Kbd, Logo } from "@/ui/misc";
 import { toast } from "@/ui/toast";
 import { ShortcutCapture } from "./ShortcutCapture";
+import { KeymapSettings, ResetKeymap } from "./KeymapSettings";
 import type { AiProvider, BackupInfo, Settings, Stats } from "@/types";
 
 declare const __APP_VERSION__: string;
 
-type Tab = "shortcut" | "capture" | "storage" | "ai" | "appearance" | "about";
+type Tab = "shortcut" | "keys" | "capture" | "storage" | "ai" | "appearance" | "about";
 const TABS: [Tab, string][] = [
-  ["shortcut", "Raccourci et collage"],
+  ["shortcut", "Collage rapide"],
+  ["keys", "Raccourcis clavier"],
   ["capture", "Capture"],
   ["storage", "Stockage"],
   ["ai", "Intelligence artificielle"],
@@ -32,7 +34,7 @@ export function SettingsView({ stats }: { stats: Stats | null }) {
   if (!settings) return null;
   return (
     <div className="flex min-w-0 flex-1 animate-in">
-      <nav ref={navRef} className="relative w-60 shrink-0 space-y-px border-r border-line px-2.5 py-3" aria-label="Rubriques">
+      <nav ref={navRef} className="relative w-52 shrink-0 min-[1200px]:w-60 space-y-px border-r border-line px-2.5 py-3" aria-label="Rubriques">
         {thumb && (
           <span
             aria-hidden="true"
@@ -62,6 +64,7 @@ export function SettingsView({ stats }: { stats: Stats | null }) {
         <div key={tab} className="mx-auto max-w-2xl animate-rise px-8 py-8">
           <h1 className="mb-6 text-xl text-foreground">{TABS.find(([k]) => k === tab)?.[1]}</h1>
           {tab === "shortcut" && <ShortcutSection />}
+          {tab === "keys" && <KeysSection />}
           {tab === "capture" && <CaptureSection />}
           {tab === "storage" && <StorageSection stats={stats} />}
           {tab === "ai" && <AiSection />}
@@ -178,7 +181,26 @@ function ShortcutSection() {
           <Switch label="Démarrer avec Windows" checked={settings.launch_at_startup} onChange={(v) => save({ launch_at_startup: v })} />
         </Row>
       </Group>
-      <Group title="Dans le collage rapide">
+    </>
+  );
+}
+
+function KeysSection() {
+  return (
+    <>
+      <div className="-mt-3 mb-6 flex items-center justify-between gap-6">
+        <p className="text-13 leading-relaxed text-muted-foreground">
+          Actifs partout dans la grande fenêtre. Cliquez sur un raccourci puis appuyez sur la nouvelle combinaison (Échap pour annuler).
+        </p>
+        <ResetKeymap />
+      </div>
+      <Group title="Élément sélectionné">
+        <KeymapSettings group="Élément" />
+      </Group>
+      <Group title="Fenêtre">
+        <KeymapSettings group="Fenêtre" />
+      </Group>
+      <Group title="Collage rapide (fixes)">
         <ShortcutHelp />
       </Group>
     </>

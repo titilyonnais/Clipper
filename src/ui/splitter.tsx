@@ -47,10 +47,9 @@ export function Splitter({ panel, label }: { panel: PanelWidth; label: string })
 
   useEffect(() => {
     if (!dragging) return;
-    document.body.style.cursor = "col-resize";
-    return () => {
-      document.body.style.cursor = "";
-    };
+    // No transitions while dragging: panels follow the pointer exactly.
+    document.body.classList.add("resizing");
+    return () => document.body.classList.remove("resizing");
   }, [dragging]);
 
   return (

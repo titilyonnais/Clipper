@@ -58,6 +58,7 @@ pub fn run() {
             commands::clips::set_pinned,
             commands::clips::set_sensitive,
             commands::clips::delete_clips,
+            commands::clips::undo_delete,
             commands::clips::clear_history,
             commands::clips::cleanup_now,
             commands::clips::start_queue,
@@ -124,6 +125,9 @@ pub fn run() {
             if let tauri::RunEvent::Exit = event {
                 clipboard::queue::stop();
                 if let Some(state) = app.try_state::<AppState>() {
+                    if let Err(e) = state.db.forget_undo() {
+                        log::warn!("forget_undo: {e}");
+                    }
                     state.db.checkpoint();
                 }
             }
@@ -219,6 +223,10 @@ fn spawn_maintenance(app: AppHandle, db: Arc<Db>) {
             std::thread::sleep(Duration::from_secs(30));
             loop {
                 let s = db.get_settings().unwrap_or_default();
+                // Undo is offered for a few seconds only.
+                if let Err(e) = db.forget_undo() {
+                    log::warn!("forget_undo: {e}");
+                }
                 match db.cleanup_expired(s.auto_delete_days) {
                     Ok(n) if n > 0 => {
                         let _ = app.emit("clips:changed", ());
