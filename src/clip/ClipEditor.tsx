@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ClipboardPaste, Copy, Save } from "lucide-react";
+import { ClipboardPaste, Save } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/ui/button";
 import { Textarea } from "@/ui/form";
@@ -7,65 +7,74 @@ import { Kbd } from "@/ui/misc";
 import { run } from "./actions";
 import type { ClipItem } from "@/types";
 
-/** Edit a text clip, then paste it once or save it into the history. */
-export function ClipEditor({
-  clip,
-  inPopup,
-  onDone,
+/**
+ * Text area of the editor. Ctrl+S saves, Ctrl+Entrée uses the edited text
+ * (copy or paste), Échap asks to leave.
+ */
+export function EditorArea({
+  value,
+  onChange,
+  onSave,
+  onUse,
+  onCancel,
 }: {
-  clip: ClipItem;
-  inPopup: boolean;
-  onDone: (savedId?: number) => void;
+  value: string;
+  onChange: (v: string) => void;
+  onSave: () => void;
+  onUse: () => void;
+  onCancel: () => void;
 }) {
-  const [text, setText] = useState(clip.content ?? "");
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     ref.current?.focus();
     ref.current?.setSelectionRange(0, 0);
   }, []);
-
-  const paste = () => run(async () => {
-    const outcome = await api.pasteText(text);
-    onDone();
-    return outcome;
-  }, inPopup ? undefined : "Copié.");
-  const save = () => run(async () => onDone(await api.updateText(clip.id, text)), "Enregistré.");
-
   return (
-    <div
-      className="flex h-full flex-col gap-3"
+    <Textarea
+      ref={ref}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
       onKeyDown={(e) => {
-        if (e.key === "Escape") {
+        const key = e.key.toLowerCase();
+        if (e.key === "Escape" || (e.ctrlKey && (key === "s" || e.key === "Enter"))) {
           e.preventDefault();
           e.stopPropagation();
-          onDone();
-        } else if (e.ctrlKey && e.key === "Enter") {
-          e.preventDefault();
-          e.stopPropagation();
-          paste();
-        } else if (e.ctrlKey && e.key.toLowerCase() === "s") {
-          e.preventDefault();
-          e.stopPropagation();
-          save();
+          if (e.key === "Escape") onCancel();
+          else if (key === "s") onSave();
+          else onUse();
         }
       }}
-    >
-      <Textarea
-        ref={ref}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        aria-label="Texte à modifier"
-        className="min-h-0 flex-1 font-mono text-[12.5px]"
-      />
+      aria-label="Texte à modifier"
+      className="min-h-0 flex-1 font-mono text-[12.5px]"
+    />
+  );
+}
+
+/** Editor of the quick-paste popup, with its actions below the text. */
+export function ClipEditor({ clip, onDone }: { clip: ClipItem; onDone: () => void }) {
+  const [text, setText] = useState(clip.content ?? "");
+  const changed = text !== (clip.content ?? "");
+  const paste = () => text.trim() && run(async () => {
+    await api.pasteText(text);
+    onDone();
+  });
+  const save = () => changed && text.trim() && run(async () => {
+    await api.updateText(clip.id, text);
+    onDone();
+  }, "Enregistré.");
+
+  return (
+    <div className="flex h-full flex-col gap-3">
+      <EditorArea value={text} onChange={setText} onSave={save} onUse={paste} onCancel={onDone} />
       <div className="flex items-center gap-2">
         <Button variant="primary" size="sm" onClick={paste} disabled={!text.trim()}>
-          {inPopup ? <ClipboardPaste /> : <Copy />} {inPopup ? "Coller" : "Copier"} <Kbd className="border-brand-foreground/30 text-brand-foreground/70">Ctrl ↵</Kbd>
+          <ClipboardPaste /> Coller <Kbd className="bg-brand-foreground/15 text-brand-foreground/70">Ctrl Entrée</Kbd>
         </Button>
-        <Button size="sm" onClick={save} disabled={!text.trim() || text === clip.content}>
+        <Button size="sm" onClick={save} disabled={!text.trim() || !changed}>
           <Save /> Enregistrer <Kbd>Ctrl S</Kbd>
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => onDone()} className="ml-auto">
-          Annuler <Kbd>Échap</Kbd>
+        <Button size="sm" variant="ghost" onClick={onDone} className="ml-auto">
+          Fermer <Kbd>Échap</Kbd>
         </Button>
       </div>
     </div>

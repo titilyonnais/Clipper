@@ -277,6 +277,35 @@ fn limit_keeps_pinned_and_removes_image_files() {
 }
 
 #[test]
+fn last_deletion_can_be_undone() {
+    let (db, dir) = temp_db();
+    let rich = RichFormats {
+        html: Some(b"<i>x</i>".to_vec()),
+        rtf: None,
+    };
+    let a = add(&db, "premier", false, &rich);
+    let b = text(&db, "second");
+    db.set_pinned(a, true).unwrap();
+    assert_eq!(db.delete(&[a, b]).unwrap(), 2);
+    assert!(db.list(&ListParams::default()).unwrap().is_empty());
+    assert!(search(&db, "premier").is_empty());
+
+    assert_eq!(db.undo_delete().unwrap(), 2);
+    let back = db.get(a).unwrap().unwrap();
+    assert!(back.pinned && back.has_rich, "restored as it was");
+    assert!(db.rich_formats(a).unwrap().html.is_some());
+    assert_eq!(search(&db, "premier"), vec![a]);
+    assert_eq!(db.undo_delete().unwrap(), 0, "only once");
+
+    // A new deletion makes the previous one final.
+    db.delete(&[a]).unwrap();
+    db.delete(&[b]).unwrap();
+    assert_eq!(db.undo_delete().unwrap(), 1);
+    assert!(db.get(a).unwrap().is_none());
+    std::fs::remove_dir_all(dir).ok();
+}
+
+#[test]
 fn backup_and_restore_round_trip() {
     let (db, dir) = temp_db();
     let keep = text(&db, "avant");

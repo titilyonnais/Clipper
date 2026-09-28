@@ -1,5 +1,24 @@
 # Notes de version
 
+## 3.2.0
+
+### Raccourcis
+- Nouvel onglet Paramètres › Raccourcis clavier : chaque action de la grande fenêtre a un raccourci modifiable (copier, texte brut, modifier, épingler, supprimer, snippet, rechercher, nouvelle collection, barre latérale…).
+- Les raccourcis marchent partout dans la fenêtre, plus seulement quand la liste a le focus. Ils sont affichés dans les menus et les infobulles.
+
+### Aperçu
+- Barre d'actions sans doublon : Copier, Copier en…, Modifier, Épingler et Supprimer sont visibles ; le menu ⋯ ne contient que le reste (collections, snippet, masquer, IA, ignorer l'application).
+- Modification sur place : la barre devient Enregistrer / Copier le texte modifié / Annuler. Quitter un texte modifié non enregistré demande confirmation.
+- L'application d'origine est indiquée en haut (« Copié depuis Brave ») ; « Ne plus enregistrer depuis… » est dans le menu ⋯, avec confirmation.
+- Suppression immédiate avec « Annuler » dans la notification (ou Ctrl+Z).
+
+### Fenêtre
+- Barre latérale repliable en icônes (bouton ou Ctrl+B), automatiquement quand la fenêtre est étroite ; les boutons de l'aperçu se compactent quand la place manque.
+- Collections créées et renommées directement dans la barre latérale ; bouton + plus grand.
+- Menus déroulants : un second clic sur le bouton les referme.
+- Fond des fenêtres de dialogue : flou prononcé, qui apparaît progressivement.
+- Le message « Aucun élément sélectionné » est centré dans toutes les vues.
+
 ## 3.1.0
 
 ### Interface

@@ -1,6 +1,6 @@
 [package]
 name = "clipper"
-version = "3.1.0"
+version = "3.2.0"
 description = "Clipper - gestionnaire de presse-papiers pour Windows"
 authors = ["titilyonnais"]
 license = "MIT"

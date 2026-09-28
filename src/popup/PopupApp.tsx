@@ -4,7 +4,7 @@ import { api, errorText } from "@/lib/api";
 import { useClipList, useDebounced, useTauriEvent } from "@/lib/hooks";
 import { useSettings } from "@/lib/settings";
 import { appLabel, cn } from "@/lib/utils";
-import { clipMenu, isText, run } from "@/clip/actions";
+import { clipMenu, deleteClips, isText, run } from "@/clip/actions";
 import { ClipContent } from "@/clip/ClipContent";
 import { ClipEditor } from "@/clip/ClipEditor";
 import { ClipList, useSelection } from "@/clip/ClipList";
@@ -315,7 +315,7 @@ function HistoryPane({
       run(() => api.setPinned(sel.selected.map((c) => c.id), pin));
     } else if (e.ctrlKey && k === "Delete" && sel.selected.length) {
       e.preventDefault();
-      run(() => api.remove(sel.selected.map((c) => c.id)));
+      deleteClips(sel.selected.map((c) => c.id));
     }
   };
 
@@ -382,7 +382,7 @@ function HistoryPane({
         {active && full?.id === active.id ? (
           editing ? (
             <div className="animate-in">
-              <ClipEditor clip={full} inPopup onDone={() => setEditing(false)} />
+              <ClipEditor clip={full} onDone={() => setEditing(false)} />
             </div>
           ) : (
             <div key={full.id} className="flex min-h-0 flex-1 animate-in flex-col">

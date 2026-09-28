@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ClipboardPaste, Copy, Sparkles, X } from "lucide-react";
 import { api, errorText } from "@/lib/api";
 import { Button, IconButton } from "@/ui/button";
-import { Menu, useMenu, type MenuEntry } from "@/ui/menu";
-import { Spinner } from "@/ui/misc";
+import type { MenuEntry } from "@/ui/menu";
 import { run } from "./actions";
 import type { AiAction, AiResponse, ClipItem } from "@/types";
 
@@ -36,33 +35,18 @@ export function useAi(clip: ClipItem | null) {
   return { busy, result, ask, dismiss: () => setResult(null) };
 }
 
-/** "IA" button with its menu. */
-export function AiButton({ ai, disabled, reason }: { ai: ReturnType<typeof useAi>; disabled: boolean; reason?: string }) {
-  const menu = useMenu();
-  const entries: MenuEntry[] = [
+/** Actions offered by the AI menu. */
+export function aiEntries(ai: ReturnType<typeof useAi>): MenuEntry[] {
+  return [
+    { heading: "Intelligence artificielle" },
     { label: "Résumer", onSelect: () => ai.ask("summarize") },
     { label: "Expliquer", onSelect: () => ai.ask("explain") },
     { label: "Reformuler", onSelect: () => ai.ask("rephrase") },
     { label: "Corriger l'orthographe", onSelect: () => ai.ask("fix") },
+    { label: "Classer (collection et tags)", onSelect: () => ai.ask("tag") },
     { heading: "Traduire en" },
     ...LANGUAGES.map((l) => ({ label: l.charAt(0).toUpperCase() + l.slice(1), onSelect: () => ai.ask("translate", l) })),
-    { separator: true },
-    { label: "Classer (collection et tags)", onSelect: () => ai.ask("tag") },
   ];
-  return (
-    <>
-      <Button
-        size="sm"
-        variant="ghost"
-        disabled={disabled || ai.busy}
-        title={disabled ? reason : "Actions IA"}
-        onClick={(e) => menu.openBelow(e.currentTarget)}
-      >
-        {ai.busy ? <Spinner /> : <Sparkles />} IA
-      </Button>
-      {menu.anchor && <Menu anchor={menu.anchor} entries={entries} onClose={menu.close} />}
-    </>
-  );
 }
 
 /** Answer of the model, with paste/copy actions. */

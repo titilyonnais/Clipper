@@ -16,7 +16,8 @@ export type MenuEntry =
   | { separator: true }
   | { heading: string };
 
-type Anchor = { x: number; y: number; align?: "start" | "end" };
+/** `trigger`: the button that opened the menu; clicking it again closes it. */
+type Anchor = { x: number; y: number; align?: "start" | "end"; trigger?: HTMLElement };
 
 /**
  * Floating menu, positioned at a point (context menu) or under a button.
@@ -42,7 +43,9 @@ export function Menu({ anchor, entries, onClose }: { anchor: Anchor; entries: Me
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) onClose();
+      const target = e.target as Node;
+      // A press on the trigger is left to its click handler, which toggles.
+      if (!ref.current?.contains(target) && !anchor.trigger?.contains(target)) onClose();
     };
     const onBlur = () => onClose();
     document.addEventListener("mousedown", onDown, true);
@@ -51,7 +54,7 @@ export function Menu({ anchor, entries, onClose }: { anchor: Anchor; entries: Me
       document.removeEventListener("mousedown", onDown, true);
       window.removeEventListener("blur", onBlur);
     };
-  }, [onClose]);
+  }, [onClose, anchor.trigger]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     e.stopPropagation();
@@ -118,7 +121,7 @@ export function Menu({ anchor, entries, onClose }: { anchor: Anchor; entries: Me
               {e.checked ? <Check /> : e.icon}
             </span>
             <span className="flex-1 truncate">{e.label}</span>
-            {e.hint && <span className="font-mono text-[11px] text-subtle-foreground">{e.hint}</span>}
+            {e.hint && <span className="pl-4 text-xs text-subtle-foreground">{e.hint}</span>}
           </button>
         );
       })}
@@ -127,17 +130,19 @@ export function Menu({ anchor, entries, onClose }: { anchor: Anchor; entries: Me
   );
 }
 
-/** A trigger button that opens a menu below itself. */
+/** A trigger button that opens a menu below itself (and closes it when clicked again). */
 export function useMenu() {
   const [anchor, setAnchor] = useState<Anchor | null>(null);
   return {
     open: anchor !== null,
     anchor,
     openAt: (x: number, y: number) => setAnchor({ x, y }),
-    openBelow: (el: HTMLElement, align: "start" | "end" = "start") => {
-      const r = el.getBoundingClientRect();
-      setAnchor({ x: align === "end" ? r.right : r.left, y: r.bottom + 4, align });
-    },
+    openBelow: (el: HTMLElement, align: "start" | "end" = "start") =>
+      setAnchor((current) => {
+        if (current?.trigger === el) return null;
+        const r = el.getBoundingClientRect();
+        return { x: align === "end" ? r.right : r.left, y: r.bottom + 4, align, trigger: el };
+      }),
     close: () => setAnchor(null),
   };
 }

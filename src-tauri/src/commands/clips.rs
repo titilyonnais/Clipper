@@ -237,6 +237,13 @@ pub async fn delete_clips(
 }
 
 #[tauri::command]
+pub async fn undo_delete(app: AppHandle, state: State<'_, AppState>) -> CmdResult<usize> {
+    let n = state.db.undo_delete().map_err(err)?;
+    changed(&app);
+    Ok(n)
+}
+
+#[tauri::command]
 pub async fn clear_history(app: AppHandle, state: State<'_, AppState>) -> CmdResult<usize> {
     let n = state.db.clear_history().map_err(err)?;
     changed(&app);
