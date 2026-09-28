@@ -75,133 +75,123 @@ export function PopupApp() {
   };
 
   return (
-    // The transparent margin around the panel leaves room for its shadow;
-    // a click there closes the popup like a click outside it.
     <div
-      className="h-screen p-8"
-      onMouseDown={(e) => e.target === e.currentTarget && window.dispatchEvent(new Event(CLOSE_EVENT))}
+      className={cn(
+        "relative flex h-screen flex-col overflow-hidden rounded-[10px] bg-background",
+        phase === "open" && "popup-open animate-popup-in",
+        phase === "closing" && "pointer-events-none animate-popup-out",
+        phase === "hidden" && "opacity-0",
+      )}
+      onKeyDown={(e) => {
+        if (e.key === "F1" || (help && e.key === "Escape")) {
+          e.preventDefault();
+          setHelp((v) => !v && e.key === "F1");
+          return;
+        }
+        keys.current?.(e);
+      }}
     >
-      <div
-        className={cn(
-          "relative flex h-full flex-col overflow-hidden rounded-[10px] bg-background",
-          // Same soft shadow as a Windows 11 window, no outline.
-          "shadow-[0_8px_24px_-6px_rgb(0_0_0/0.55),0_1px_4px_rgb(0_0_0/0.3)]",
-          "[.light_&]:shadow-[0_8px_24px_-6px_rgb(0_0_0/0.22),0_1px_4px_rgb(0_0_0/0.08)]",
-          phase === "open" && "popup-open animate-popup-in",
-          phase === "closing" && "pointer-events-none animate-popup-out",
-          phase === "hidden" && "opacity-0",
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line pr-3 pl-4">
+        {collection ? (
+          <IconButton label="Retour aux collections" size="sm" onClick={() => setCollection(null)}>
+            <ArrowLeft />
+          </IconButton>
+        ) : (
+          <Search className="size-4 shrink-0 text-subtle-foreground" />
         )}
-        onKeyDown={(e) => {
-          if (e.key === "F1" || (help && e.key === "Escape")) {
-            e.preventDefault();
-            setHelp((v) => !v && e.key === "F1");
-            return;
+        <input
+          ref={searchRef}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          spellCheck={false}
+          autoFocus
+          aria-label="Rechercher"
+          placeholder={
+            collection
+              ? `Rechercher dans ${collection.name}…`
+              : tab === "snippets"
+                ? "Rechercher un snippet…"
+                : tab === "collections"
+                  ? "Rechercher une collection…"
+                  : "Rechercher, ou tapez l'abréviation d'un snippet…"
           }
-          keys.current?.(e);
-        }}
-      >
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line pr-3 pl-4">
-          {collection ? (
-            <IconButton label="Retour aux collections" size="sm" onClick={() => setCollection(null)}>
-              <ArrowLeft />
-            </IconButton>
-          ) : (
-            <Search className="size-4 shrink-0 text-subtle-foreground" />
-          )}
-          <input
-            ref={searchRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            spellCheck={false}
-            autoFocus
-            aria-label="Rechercher"
-            placeholder={
-              collection
-                ? `Rechercher dans ${collection.name}…`
-                : tab === "snippets"
-                  ? "Rechercher un snippet…"
-                  : tab === "collections"
-                    ? "Rechercher une collection…"
-                    : "Rechercher, ou tapez l'abréviation d'un snippet…"
-            }
-            className="h-full min-w-0 flex-1 bg-transparent text-base text-foreground placeholder:text-subtle-foreground"
-          />
-          {query && (
-            <IconButton label="Effacer" size="xs" onClick={() => setQuery("")}>
+          className="h-full min-w-0 flex-1 bg-transparent text-base text-foreground placeholder:text-subtle-foreground"
+        />
+        {query && (
+          <IconButton label="Effacer" size="xs" onClick={() => setQuery("")}>
+            <X />
+          </IconButton>
+        )}
+        <Segmented
+          size="sm"
+          label="Vue"
+          value={tab}
+          onChange={switchTab}
+          options={[
+            { value: "history", label: "Historique" },
+            { value: "snippets", label: "Snippets" },
+            { value: "collections", label: "Collections" },
+          ]}
+        />
+      </header>
+
+      {tab === "snippets" ? (
+        <SnippetsPane query={q} onTab={switchTab} clearQuery={query ? () => setQuery("") : undefined} keys={keys} />
+      ) : tab === "collections" && !collection ? (
+        <CollectionsPane
+          query={q}
+          onOpen={(c) => {
+            setCollection(c);
+            setQuery("");
+          }}
+          onTab={switchTab}
+          keys={keys}
+        />
+      ) : (
+        <HistoryPane
+          params={{ query: q || undefined, collection_id: collection?.id }}
+          rawQuery={query}
+          onTab={switchTab}
+          onBack={collection ? () => setCollection(null) : undefined}
+          editing={editing}
+          setEditing={setEditing}
+          dataDir={settings?.data_dir}
+          clearQuery={() => setQuery("")}
+          keys={keys}
+        />
+      )}
+
+      {help && (
+        <div className="absolute inset-x-0 top-14 bottom-10 z-20 flex animate-in flex-col bg-background/95 px-8 py-6 backdrop-blur-sm">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm text-foreground">Raccourcis clavier</h2>
+            <IconButton label="Fermer" size="sm" onClick={() => setHelp(false)}>
               <X />
             </IconButton>
-          )}
-          <Segmented
-            size="sm"
-            label="Vue"
-            value={tab}
-            onChange={switchTab}
-            options={[
-              { value: "history", label: "Historique" },
-              { value: "snippets", label: "Snippets" },
-              { value: "collections", label: "Collections" },
-            ]}
-          />
-        </header>
-
-        {tab === "snippets" ? (
-          <SnippetsPane query={q} onTab={switchTab} clearQuery={query ? () => setQuery("") : undefined} keys={keys} />
-        ) : tab === "collections" && !collection ? (
-          <CollectionsPane
-            query={q}
-            onOpen={(c) => {
-              setCollection(c);
-              setQuery("");
-            }}
-            onTab={switchTab}
-            keys={keys}
-          />
-        ) : (
-          <HistoryPane
-            params={{ query: q || undefined, collection_id: collection?.id }}
-            rawQuery={query}
-            onTab={switchTab}
-            onBack={collection ? () => setCollection(null) : undefined}
-            editing={editing}
-            setEditing={setEditing}
-            dataDir={settings?.data_dir}
-            clearQuery={() => setQuery("")}
-            keys={keys}
-          />
-        )}
-
-        {help && (
-          <div className="absolute inset-x-0 top-14 bottom-10 z-20 flex animate-in flex-col bg-background/95 px-8 py-6 backdrop-blur-sm">
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-sm text-foreground">Raccourcis clavier</h2>
-              <IconButton label="Fermer" size="sm" onClick={() => setHelp(false)}>
-                <X />
-              </IconButton>
-            </div>
-            <ShortcutHelp />
           </div>
-        )}
+          <ShortcutHelp />
+        </div>
+      )}
 
-        <footer className="flex h-10 shrink-0 items-center gap-6 border-t border-line px-4 text-xs text-subtle-foreground">
-          <Hint keys={["Entrée"]}>{settings?.paste_directly && target ? `Coller dans ${appLabel(target)}` : "Copier"}</Hint>
-          <Hint keys={["Maj", "Entrée"]}>Texte brut</Hint>
-          <span className="ml-auto flex items-center gap-4">
-            {settings?.paused_until && (
-              <span className="flex items-center gap-1.5 text-warn">
-                <EyeOff className="size-3.5" /> Capture suspendue
-              </span>
-            )}
-            <button
-              type="button"
-              aria-pressed={help}
-              onClick={() => setHelp((v) => !v)}
-              className="flex items-center gap-2 rounded-ctl-sm transition-colors hover:text-foreground"
-            >
-              <Keyboard className="size-3.5" /> Raccourcis <Kbd>F1</Kbd>
-            </button>
-          </span>
-        </footer>
-      </div>
+      <footer className="flex h-10 shrink-0 items-center gap-6 border-t border-line px-4 text-xs text-subtle-foreground">
+        <Hint keys={["Entrée"]}>{settings?.paste_directly && target ? `Coller dans ${appLabel(target)}` : "Copier"}</Hint>
+        <Hint keys={["Maj", "Entrée"]}>Texte brut</Hint>
+        <span className="ml-auto flex items-center gap-4">
+          {settings?.paused_until && (
+            <span className="flex items-center gap-1.5 text-warn">
+              <EyeOff className="size-3.5" /> Capture suspendue
+            </span>
+          )}
+          <button
+            type="button"
+            aria-pressed={help}
+            onClick={() => setHelp((v) => !v)}
+            className="flex items-center gap-2 rounded-ctl-sm transition-colors hover:text-foreground"
+          >
+            <Keyboard className="size-3.5" /> Raccourcis <Kbd>F1</Kbd>
+          </button>
+        </span>
+      </footer>
     </div>
   );
 }

@@ -1,5 +1,9 @@
 # Notes de version
 
+## 3.3.1
+
+- Collage rapide : plus aucun halo gris autour de la carte. Windows ne dessine plus de cadre, d'ombre ni de coins autour de la fenêtre transparente, et la carte n'a plus d'ombre ; la fenêtre a exactement la taille de la carte.
+
 ## 3.3.0
 
 ### Interface

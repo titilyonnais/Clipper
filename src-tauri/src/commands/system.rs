@@ -83,7 +83,10 @@ pub async fn set_api_key(provider: String, key: String) -> CmdResult<bool> {
 /// The window edges follow the theme the interface resolved.
 #[tauri::command]
 pub fn set_frame_theme(light: bool, webview_window: tauri::WebviewWindow) {
-    crate::window::style_frame(&webview_window, light);
+    // The popup has no frame at all (see `window::create_popup`).
+    if webview_window.label() != crate::window::POPUP {
+        crate::window::style_frame(&webview_window, light);
+    }
 }
 
 // ─── Win+V ───
