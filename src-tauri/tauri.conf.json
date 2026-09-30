@@ -83,6 +83,18 @@
       "wix": {
         "language": "fr-FR"
       }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZDQzg0RkJFMjNCRTZEMzkKUldRNWJiNGp2ay9JL0xwTk14WUZFQmtPSC94L1lYWDlCU1R6VnlUNWxUSW0xdWsvdzJUdG5HWmQK",
+      "endpoints": [
+        "https://github.com/titilyonnais/Clipper/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "quiet"
+      }
     }
   }
 }

@@ -482,8 +482,20 @@ fn migrates_real_profile_copy() {
 fn time_ranges() {
     let (from, to) = time_range_bounds("2026-03-10..2026-03-01").unwrap();
     assert!(from < to);
-    assert_eq!(time_range_bounds("2026-03-01..2026-03-10"), Some((from, to)));
-    for r in ["today", "yesterday", "week", "month", "3m", "6m", "1y", "2026-02-28"] {
+    assert_eq!(
+        time_range_bounds("2026-03-01..2026-03-10"),
+        Some((from, to))
+    );
+    for r in [
+        "today",
+        "yesterday",
+        "week",
+        "month",
+        "3m",
+        "6m",
+        "1y",
+        "2026-02-28",
+    ] {
         let (a, b) = time_range_bounds(r).unwrap();
         assert!(a < b, "{r}");
     }

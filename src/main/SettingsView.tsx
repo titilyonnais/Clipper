@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, Download, FolderOpen, RotateCcw, Upload } from "lucide-react";
+import { Check, Download, FolderOpen, RefreshCw, RotateCcw, Upload } from "lucide-react";
 import { api, errorText } from "@/lib/api";
 import { useSettings } from "@/lib/settings";
+import { checkForUpdate, openUpdate, useUpdate } from "@/lib/update";
 import { cn, fullDate, humanBytes, plural } from "@/lib/utils";
 import { run } from "@/clip/actions";
 import { Button } from "@/ui/button";
@@ -611,6 +612,19 @@ function AppearanceSection() {
 
 function AboutSection() {
   const { settings } = useSettings();
+  const save = useSave();
+  const update = useUpdate();
+  if (!settings) return null;
+  const found = update.info && (update.status === "available" || update.status === "error");
+  const status = {
+    idle: "Les nouvelles versions sont publiées sur GitHub.",
+    checking: "Recherche en cours…",
+    latest: "Clipper est à jour.",
+    available: `La version ${update.info?.version} est disponible.`,
+    downloading: "Téléchargement en cours…",
+    installing: "Installation en cours…",
+    error: update.error,
+  }[update.status];
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -620,9 +634,26 @@ function AboutSection() {
           <div className="text-13 text-muted-foreground">Version {__APP_VERSION__} · licence MIT</div>
         </div>
       </div>
+      <Group title="Mises à jour">
+        <Row label={found ? `Clipper ${update.info!.version}` : "Version installée"} hint={<span className={cn(update.status === "error" && !found && "text-danger")}>{status}</span>}>
+          {found ? (
+            <Button variant="primary" onClick={openUpdate}>
+              Voir la mise à jour
+            </Button>
+          ) : (
+            <Button variant="outline" disabled={update.status === "checking"} onClick={checkForUpdate}>
+              <RefreshCw className={cn("size-3.5", update.status === "checking" && "animate-spin")} />
+              Rechercher
+            </Button>
+          )}
+        </Row>
+        <Row label="Rechercher automatiquement" hint="Au démarrage, puis toutes les six heures. L'installation se fait toujours à votre demande.">
+          <Switch label="Rechercher automatiquement" checked={settings.check_updates} onChange={(v) => save({ check_updates: v })} />
+        </Row>
+      </Group>
       <Group>
         {[
-          "Tout est stocké sur cet ordinateur, rien n'est envoyé ailleurs sans action de votre part.",
+          "Tout est stocké sur cet ordinateur. Seule la recherche de mises à jour contacte GitHub, et elle peut être désactivée.",
           "Aucune télémétrie, aucune publicité, aucun compte.",
           "Les secrets détectés ne quittent jamais la machine.",
           "Aucune surveillance du clavier : le collage direct et Win+V utilisent les mécanismes prévus par Windows.",
@@ -633,7 +664,7 @@ function AboutSection() {
         ))}
       </Group>
       <p className="text-13 text-subtle-foreground">
-        Code source : github.com/titilyonnais/Clipper · Données : <span className="font-mono">{settings?.data_dir}</span>
+        Code source : github.com/titilyonnais/Clipper · Données : <span className="font-mono">{settings.data_dir}</span>
       </p>
     </div>
   );

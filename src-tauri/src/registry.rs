@@ -2,13 +2,58 @@
 
 use windows_sys::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
 use windows_sys::Win32::System::Registry::{
-    RegCloseKey, RegCreateKeyExW, RegDeleteValueW, RegQueryValueExW, RegSetValueExW, HKEY,
-    HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_BINARY, REG_DWORD, REG_EXPAND_SZ,
-    REG_OPTION_NON_VOLATILE, REG_SZ, REG_VALUE_TYPE,
+    RegCloseKey, RegCreateKeyExW, RegDeleteValueW, RegGetValueW, RegQueryValueExW, RegSetValueExW,
+    HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WRITE, REG_BINARY, REG_DWORD,
+    REG_EXPAND_SZ, REG_OPTION_NON_VOLATILE, REG_SZ, REG_VALUE_TYPE, RRF_RT_REG_SZ,
 };
 
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+/// A text value read from the current user's hive, else the machine's,
+/// without creating anything. `name` empty: the key's default value.
+pub fn read_any_hive(path: &str, name: &str) -> Option<String> {
+    let path = wide(path);
+    let name = (!name.is_empty()).then(|| wide(name));
+    let name_ptr = name.as_ref().map_or(std::ptr::null(), |n| n.as_ptr());
+    [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE]
+        .into_iter()
+        .find_map(|hive| {
+            let mut size = 0u32;
+            let status = unsafe {
+                RegGetValueW(
+                    hive,
+                    path.as_ptr(),
+                    name_ptr,
+                    RRF_RT_REG_SZ,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    &mut size,
+                )
+            };
+            if status != ERROR_SUCCESS || size == 0 {
+                return None;
+            }
+            let mut buf = vec![0u16; (size as usize).div_ceil(2)];
+            let status = unsafe {
+                RegGetValueW(
+                    hive,
+                    path.as_ptr(),
+                    name_ptr,
+                    RRF_RT_REG_SZ,
+                    std::ptr::null_mut(),
+                    buf.as_mut_ptr().cast(),
+                    &mut size,
+                )
+            };
+            (status == ERROR_SUCCESS).then(|| {
+                buf.truncate(size as usize / 2);
+                String::from_utf16_lossy(&buf)
+                    .trim_end_matches('\0')
+                    .to_string()
+            })
+        })
 }
 
 /// An open key of `HKEY_CURRENT_USER`, created if missing.
@@ -23,7 +68,11 @@ impl Drop for Key {
 impl Key {
     pub fn open(path: &str, write: bool) -> Result<Key, String> {
         let mut hkey: HKEY = std::ptr::null_mut();
-        let access = if write { KEY_READ | KEY_WRITE } else { KEY_READ };
+        let access = if write {
+            KEY_READ | KEY_WRITE
+        } else {
+            KEY_READ
+        };
         let status = unsafe {
             RegCreateKeyExW(
                 HKEY_CURRENT_USER,
@@ -88,7 +137,11 @@ impl Key {
             .chunks_exact(2)
             .map(|c| u16::from_le_bytes([c[0], c[1]]))
             .collect();
-        Some(String::from_utf16_lossy(&units).trim_end_matches('\0').to_string())
+        Some(
+            String::from_utf16_lossy(&units)
+                .trim_end_matches('\0')
+                .to_string(),
+        )
     }
 
     pub fn binary(&self, name: &str) -> Option<Vec<u8>> {
@@ -107,7 +160,9 @@ impl Key {
             )
         };
         if status != ERROR_SUCCESS {
-            return Err(format!("Écriture dans le registre impossible (erreur {status})."));
+            return Err(format!(
+                "Écriture dans le registre impossible (erreur {status})."
+            ));
         }
         Ok(())
     }
@@ -129,7 +184,9 @@ impl Key {
     pub fn delete(&self, name: &str) -> Result<(), String> {
         let status = unsafe { RegDeleteValueW(self.0, wide(name).as_ptr()) };
         if status != ERROR_SUCCESS && status != ERROR_FILE_NOT_FOUND {
-            return Err(format!("Écriture dans le registre impossible (erreur {status})."));
+            return Err(format!(
+                "Écriture dans le registre impossible (erreur {status})."
+            ));
         }
         Ok(())
     }

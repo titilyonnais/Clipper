@@ -128,6 +128,9 @@ impl Db {
         if p.pinned_only {
             conds.push("pinned = 1".into());
         }
+        if p.sensitive_only {
+            conds.push("sensitive = 1".into());
+        }
         if let Some((from, to)) = p.time_range.as_deref().and_then(time_range_bounds) {
             conds.push("used_at >= ? AND used_at < ?".into());
             args.push(from.into());

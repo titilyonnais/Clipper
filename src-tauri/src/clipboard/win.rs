@@ -3,10 +3,7 @@
 use crate::db::RichFormats;
 use anyhow::{anyhow, Result};
 use clipboard_win::{formats, options::NoClear, raw, Clipboard, Getter};
-use windows_sys::Win32::Foundation::{CloseHandle, HWND};
-use windows_sys::Win32::System::Threading::{
-    OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
-};
+use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
 
 /// Texts larger than this are not recorded (keeps the database small).
@@ -78,27 +75,7 @@ pub fn process_of_window(hwnd: HWND) -> Option<(u32, String)> {
     }
     let mut pid = 0u32;
     unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
-    if pid == 0 {
-        return None;
-    }
-    unsafe {
-        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-        if handle.is_null() {
-            return Some((pid, String::new()));
-        }
-        let mut buf = [0u16; 1024];
-        let mut len = buf.len() as u32;
-        let ok = QueryFullProcessImageNameW(handle, 0, buf.as_mut_ptr(), &mut len) != 0;
-        CloseHandle(handle);
-        Some((
-            pid,
-            if ok {
-                String::from_utf16_lossy(&buf[..len as usize])
-            } else {
-                String::new()
-            },
-        ))
-    }
+    (pid != 0).then(|| (pid, crate::processes::image_path(pid).unwrap_or_default()))
 }
 
 /// Application that owns the clipboard. Programs that open the clipboard
@@ -117,10 +94,25 @@ fn owner_app() -> Result<Option<OwnerApp>, Skip> {
             Ok(None)
         };
     }
-    let name = std::path::Path::new(&path)
-        .file_name()
-        .map(|n| n.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
+    let file_name = |path: &str| {
+        std::path::Path::new(path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_lowercase())
+            .unwrap_or_default()
+    };
+    // A copy made in a web view belongs to the application showing it
+    // (Clipper's own interface included).
+    let host = crate::processes::webview_host(pid, &file_name(&path));
+    let path = if host == pid {
+        path
+    } else if host == std::process::id() {
+        std::env::current_exe()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    } else {
+        crate::processes::image_path(host).unwrap_or(path)
+    };
+    let name = file_name(&path);
     Ok((!name.is_empty()).then_some(OwnerApp { name, path }))
 }
 

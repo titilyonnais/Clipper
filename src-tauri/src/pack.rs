@@ -57,7 +57,9 @@ fn reduced(img: &DynamicImage) -> (Vec<u8>, ExtendedColorType) {
     let opaque = rgba.pixels().all(|p| p[3] == 255);
     let grey = rgba.pixels().all(|p| p[0] == p[1] && p[1] == p[2]);
     let pick = |channels: &[usize]| -> Vec<u8> {
-        rgba.pixels().flat_map(|p| channels.iter().map(move |&c| p[c])).collect()
+        rgba.pixels()
+            .flat_map(|p| channels.iter().map(move |&c| p[c]))
+            .collect()
     };
     match (grey, opaque) {
         (true, true) => (pick(&[0]), ExtendedColorType::L8),
@@ -78,7 +80,10 @@ pub fn pack(png: &[u8]) -> Option<Vec<u8>> {
     // 16-bit and float images would lose precision in an 8-bit layout.
     let eight_bit = matches!(
         img,
-        DynamicImage::ImageLuma8(_) | DynamicImage::ImageLumaA8(_) | DynamicImage::ImageRgb8(_) | DynamicImage::ImageRgba8(_)
+        DynamicImage::ImageLuma8(_)
+            | DynamicImage::ImageLumaA8(_)
+            | DynamicImage::ImageRgb8(_)
+            | DynamicImage::ImageRgba8(_)
     );
     let smaller = eight_bit
         .then(|| {
@@ -103,7 +108,12 @@ pub fn thumbnail(png: &[u8]) -> Option<Vec<u8>> {
     if side == 0 {
         return None;
     }
-    let square = img.crop_imm((img.width() - side) / 2, (img.height() - side) / 2, side, side);
+    let square = img.crop_imm(
+        (img.width() - side) / 2,
+        (img.height() - side) / 2,
+        side,
+        side,
+    );
     let small = if side > THUMB_SIDE {
         square.thumbnail_exact(THUMB_SIDE, THUMB_SIDE)
     } else {
@@ -131,7 +141,8 @@ fn replace(path: &Path, data: &[u8]) -> std::io::Result<()> {
 /// Returns the number of thumbnails made (the lists can then use them).
 pub fn run(db: &Db) -> usize {
     use windows_sys::Win32::System::Threading::{
-        GetCurrentThread, SetThreadPriority, THREAD_MODE_BACKGROUND_BEGIN, THREAD_MODE_BACKGROUND_END,
+        GetCurrentThread, SetThreadPriority, THREAD_MODE_BACKGROUND_BEGIN,
+        THREAD_MODE_BACKGROUND_END,
     };
     let files = match db.image_files() {
         Ok(files) => files,
@@ -173,7 +184,8 @@ mod tests {
 
     fn png_of(img: &DynamicImage) -> Vec<u8> {
         let mut out = Vec::new();
-        img.write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png).unwrap();
+        img.write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
+            .unwrap();
         out
     }
 
@@ -198,7 +210,10 @@ mod tests {
             image::Rgba([v, v, v, (x * 4) as u8])
         }));
         let packed = pack(&png_of(&img)).unwrap();
-        assert_eq!(image::load_from_memory(&packed).unwrap().to_rgba8(), img.to_rgba8());
+        assert_eq!(
+            image::load_from_memory(&packed).unwrap().to_rgba8(),
+            img.to_rgba8()
+        );
     }
 
     #[test]

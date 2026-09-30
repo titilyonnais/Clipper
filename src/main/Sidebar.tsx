@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Clock, Folder, MoreHorizontal, Pencil, Pin, Plus, Scissors, Settings as SettingsIcon, Trash2 } from "lucide-react";
+import { ChevronDown, Clock, Download, Folder, MoreHorizontal, Pencil, Pin, Plus, Scissors, Settings as SettingsIcon, ShieldAlert, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSettings } from "@/lib/settings";
+import { openUpdate, useUpdate } from "@/lib/update";
 import { comboLabel, useKeymap } from "@/lib/shortcuts";
 import { appLabel, cn } from "@/lib/utils";
 import { run } from "@/clip/actions";
@@ -13,6 +14,7 @@ import type { Collection, SourceApp, Stats } from "@/types";
 export type View =
   | { kind: "history" }
   | { kind: "pinned" }
+  | { kind: "sensitive" }
   | { kind: "snippets" }
   | { kind: "settings" }
   | { kind: "collection"; id: number }
@@ -52,6 +54,7 @@ interface Props {
 
 export function Sidebar({ view, onView, stats, collections, apps, snippetCount, width, collapsed, creating, onCreating, onNaming }: Props) {
   const { settings } = useSettings();
+  const update = useUpdate();
   const keymap = useKeymap();
   const [dropTarget, setDropTarget] = useState<number | null>(null);
   const [showAllApps, setShowAllApps] = useState(false);
@@ -107,6 +110,7 @@ export function Sidebar({ view, onView, stats, collections, apps, snippetCount, 
         <div className="space-y-px">
           {item({ kind: "history" }, "Historique", <Clock />, stats?.total)}
           {item({ kind: "pinned" }, "Épinglés", <Pin />, stats?.pinned)}
+          {item({ kind: "sensitive" }, "Sensibles", <ShieldAlert />, stats?.sensitive)}
           {item({ kind: "snippets" }, "Snippets", <Scissors />, snippetCount)}
         </div>
 
@@ -211,7 +215,17 @@ export function Sidebar({ view, onView, stats, collections, apps, snippetCount, 
         )}
       </nav>
 
-      <div className="border-t border-line px-2.5 py-2.5">
+      <div className="space-y-px border-t border-line px-2.5 py-2.5">
+        {update.info && update.status === "available" && (
+          <NavItem
+            active={false}
+            collapsed={collapsed}
+            onClick={openUpdate}
+            icon={<Download className="text-brand" />}
+            label="Mise à jour disponible"
+            title={`Clipper ${update.info.version} est disponible`}
+          />
+        )}
         <NavItem
           active={view.kind === "settings"}
           solid

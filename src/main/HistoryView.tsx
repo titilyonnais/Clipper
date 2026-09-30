@@ -95,6 +95,7 @@ export const HistoryView = forwardRef<HistoryHandle, Props>(function HistoryView
       kinds: kind === "all" ? undefined : [kind],
       time_range: range,
       pinned_only: view.kind === "pinned",
+      sensitive_only: view.kind === "sensitive",
       collection_id: view.kind === "collection" ? view.id : undefined,
       source_app: view.kind === "app" ? view.name : undefined,
     }),
@@ -315,7 +316,9 @@ export const HistoryView = forwardRef<HistoryHandle, Props>(function HistoryView
                   ? "Glissez des éléments sur la collection dans la barre latérale."
                   : view.kind === "pinned"
                     ? `Épinglez un élément (${comboLabel(keymap.pin)}) pour le garder toujours en tête.`
-                    : "Ce que vous copiez apparaîtra ici."}
+                    : view.kind === "sensitive"
+                      ? "Les mots de passe, clés et jetons détectés dans ce que vous copiez apparaîtront ici."
+                      : "Ce que vous copiez apparaîtra ici."}
             </EmptyState>
           ) : null}
         </div>
@@ -381,6 +384,9 @@ function searchPlaceholder(view: View, title: string) {
   switch (view.kind) {
     case "pinned":
       return "Rechercher dans les épinglés…";
+    case "sensitive":
+      // Secrets are never indexed: only their tags can be searched.
+      return "Rechercher par tag…";
     case "collection":
       return `Rechercher dans ${title}…`;
     case "app":
@@ -394,6 +400,8 @@ export function viewTitle(view: View, collections: Collection[]) {
   switch (view.kind) {
     case "pinned":
       return "Épinglés";
+    case "sensitive":
+      return "Sensibles";
     case "collection":
       return collections.find((c) => c.id === view.id)?.name ?? "Collection";
     case "app":

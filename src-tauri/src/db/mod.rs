@@ -17,7 +17,7 @@ use parking_lot::Mutex;
 use rusqlite::{params, Connection, OptionalExtension};
 use std::path::{Path, PathBuf};
 
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
 
 pub struct Db {
     conn: Mutex<Connection>,
@@ -178,6 +178,14 @@ impl Db {
             migrate_v2_to_v3(&tx)?;
         }
         fix_file_clips(&tx)?;
+        if version < 5 {
+            // Copies made in Clipper's interface were attributed to the
+            // WebView2 helper process instead of Clipper.
+            tx.execute(
+                "UPDATE clips SET source_app = 'clipper.exe' WHERE source_app = 'msedgewebview2.exe'",
+                [],
+            )?;
+        }
         tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         tx.commit()?;
         if version < 3 {
@@ -560,7 +568,11 @@ fn time_range_bounds(range: &str) -> Option<(String, String)> {
     use chrono::{Duration, Months, NaiveDate};
     let today = chrono::Local::now().date_naive();
     let tomorrow = today + Duration::days(1);
-    let months_ago = |n| today.checked_sub_months(Months::new(n)).map(|d| d + Duration::days(1));
+    let months_ago = |n| {
+        today
+            .checked_sub_months(Months::new(n))
+            .map(|d| d + Duration::days(1))
+    };
     let day = |s: &str| NaiveDate::parse_from_str(s.trim(), "%Y-%m-%d").ok();
     let (from, to) = match range {
         "today" => (today, tomorrow),
