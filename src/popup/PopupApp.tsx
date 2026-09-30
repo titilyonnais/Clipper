@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { ArrowLeft, ChevronRight, EyeOff, Folder, Keyboard, Scissors, Search, X } from "lucide-react";
 import { api, errorText } from "@/lib/api";
 import { useClipList, useDebounced, useTauriEvent } from "@/lib/hooks";
@@ -33,13 +34,30 @@ export function PopupApp() {
   // "hidden" between two appearances, so each opening starts from nothing;
   // "closing" while the exit animation plays before the window hides.
   const [phase, setPhase] = useState<"open" | "closing" | "hidden">("open");
+  // Incremented at each appearance: a hide requested before it is dropped.
+  const shown = useRef(0);
   const searchRef = useRef<HTMLInputElement>(null);
   const q = useDebounced(query.trim(), 60);
   // The search field is in the header, outside the panes: keys are routed
   // from the root to whichever pane is shown.
   const keys = useRef<KeyHandler | null>(null);
 
+  // Windows shows the last frame a window presented when it appears again:
+  // the panel is made transparent and that frame presented before the window
+  // hides, so the next opening starts from nothing instead of flashing the
+  // previous content.
+  const hide = useCallback(() => {
+    const at = shown.current;
+    flushSync(() => setPhase("hidden"));
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        if (shown.current === at) api.hidePopup();
+      }),
+    );
+  }, []);
+  useTauriEvent("popup:dismiss", hide);
   useTauriEvent<string | null>("popup:shown", (e) => {
+    shown.current++;
     setTarget(e.payload);
     setTab("history");
     setQuery("");
@@ -52,9 +70,9 @@ export function PopupApp() {
   // The window hides once the exit animation is over (also without animations).
   useEffect(() => {
     if (phase !== "closing") return;
-    const t = setTimeout(() => api.hidePopup(), 120);
+    const t = setTimeout(hide, 110);
     return () => clearTimeout(t);
-  }, [phase]);
+  }, [phase, hide]);
   useEffect(() => {
     const onBlur = () => setPhase("hidden");
     const onClose = () => setPhase((p) => (p === "open" ? "closing" : p));

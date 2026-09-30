@@ -73,7 +73,7 @@ export const ClipRow = memo(function ClipRow({
       />
       {clip.kind === "image" && clip.image_path ? (
         <img
-          src={convertFileSrc(clip.image_path)}
+          src={convertFileSrc(clip.thumb_path ?? clip.image_path)}
           alt=""
           loading="lazy"
           decoding="async"

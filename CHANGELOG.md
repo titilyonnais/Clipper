@@ -1,5 +1,23 @@
 # Notes de version
 
+## 3.4.0
+
+### Interface
+- Filtre par date : 7 et 30 derniers jours, 3, 6 et 12 derniers mois, ou deux jours choisis sur un calendrier.
+- Collage rapide (Win+V) : plus de flash à l'ouverture. Le panneau est vidé à l'écran avant que la fenêtre se cache, et le rendu reste en sRGB sur les écrans HDR.
+- Menu « Copier en… » : plus d'espace vide à gauche des libellés.
+- Dates des éléments : « hier » veut dire la veille ; au-delà d'une semaine, la date est affichée (« 20 sept. »).
+
+### Espace disque
+- Images recompressées sans aucune perte en arrière-plan (priorité basse), vérifiées pixel par pixel : environ 40 % de place en moins.
+- Petites vignettes pour les listes : les grandes captures ne sont plus décodées pour une icône.
+- Sauvegardes compressées (environ trois fois plus petites), décompressées seulement pour une restauration ; les anciennes sont converties.
+- Moteur d'affichage : cache limité, pas de composants de navigateur téléchargés, rapports de plantage et caches des versions précédentes supprimés.
+
+### Corrections
+- Démarrage avec Windows : l'entrée effacée lors d'une mise à jour est recréée au lancement ; un arrêt demandé dans le Gestionnaire des tâches est respecté.
+- Mise à jour : Win+V n'est plus rendu à Windows pendant la désinstallation qui précède l'installation d'une nouvelle version.
+
 ## 3.3.1
 
 - Collage rapide : plus aucun halo gris autour de la carte. Windows ne dessine plus de cadre, d'ombre ni de coins autour de la fenêtre transparente, et la carte n'a plus d'ombre ; la fenêtre a exactement la taille de la carte.

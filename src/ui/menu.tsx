@@ -28,6 +28,8 @@ export function Menu({ anchor, entries, onClose }: { anchor: Anchor; entries: Me
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const items = entries.flatMap((e, i) => ("onSelect" in e && !e.disabled ? [i] : []));
   const [active, setActive] = useState(-1);
+  // The icon column exists only when an entry has something to show in it.
+  const gutter = entries.some((e) => "onSelect" in e && (e.icon || e.checked !== undefined));
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -117,9 +119,11 @@ export function Menu({ anchor, entries, onClose }: { anchor: Anchor; entries: Me
               active === i && (e.danger ? "bg-danger/10" : "bg-secondary"),
             )}
           >
-            <span className={cn("flex w-4 justify-center", !e.danger && "text-muted-foreground")}>
-              {e.checked ? <Check /> : e.icon}
-            </span>
+            {gutter && (
+              <span className={cn("flex w-4 justify-center", !e.danger && "text-muted-foreground")}>
+                {e.checked ? <Check /> : e.icon}
+              </span>
+            )}
             <span className="flex-1 truncate">{e.label}</span>
             {e.hint && <span className="pl-4 text-xs text-subtle-foreground">{e.hint}</span>}
           </button>

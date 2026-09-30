@@ -1,9 +1,12 @@
 ; Uninstall: give Win+V back to Windows if Clipper took it over, by removing
 ; only the letter V from Explorer's disabled hotkeys (other letters are kept).
-; Takes effect at the next sign-in or Explorer restart.
+; Takes effect at the next sign-in or Explorer restart. Not during an update:
+; the new version keeps Win+V (and, if the letter was given back while
+; installing over an older version, takes it again at its first start).
 !macro NSIS_HOOK_POSTUNINSTALL
   ReadRegDWORD $0 HKCU "Software\Clipper" "WinVTakenOver"
   ${If} $0 == 1
+  ${AndIf} $UpdateMode <> 1
     ReadRegStr $1 HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "DisabledHotkeys"
     StrCpy $2 ""
     StrLen $3 $1
@@ -23,5 +26,7 @@
       WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "DisabledHotkeys" $2
     ${EndIf}
   ${EndIf}
-  DeleteRegKey HKCU "Software\Clipper"
+  ${If} $UpdateMode <> 1
+    DeleteRegKey HKCU "Software\Clipper"
+  ${EndIf}
 !macroend

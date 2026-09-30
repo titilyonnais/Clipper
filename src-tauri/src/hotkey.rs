@@ -9,13 +9,9 @@
 //! A marker (`HKCU\Software\Clipper\WinVTakenOver`) records that the letter
 //! was added by Clipper, so the uninstaller gives Win+V back to Windows.
 
+use crate::registry::Key;
 use std::time::{Duration, Instant};
-use windows_sys::Win32::Foundation::{CloseHandle, ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
-use windows_sys::Win32::System::Registry::{
-    RegCloseKey, RegCreateKeyExW, RegDeleteValueW, RegQueryValueExW, RegSetValueExW, HKEY,
-    HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_DWORD, REG_EXPAND_SZ, REG_OPTION_NON_VOLATILE,
-    REG_SZ,
-};
+use windows_sys::Win32::Foundation::CloseHandle;
 use windows_sys::Win32::System::Threading::{
     OpenProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE,
 };
@@ -32,137 +28,31 @@ fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-struct Key(HKEY);
-
-impl Drop for Key {
-    fn drop(&mut self) {
-        unsafe { RegCloseKey(self.0) };
-    }
-}
-
-fn open_key(path: &str, write: bool) -> Result<Key, String> {
-    let mut hkey: HKEY = std::ptr::null_mut();
-    let access = if write {
-        KEY_READ | KEY_WRITE
-    } else {
-        KEY_READ
-    };
-    let status = unsafe {
-        RegCreateKeyExW(
-            HKEY_CURRENT_USER,
-            wide(path).as_ptr(),
-            0,
-            std::ptr::null(),
-            REG_OPTION_NON_VOLATILE,
-            access,
-            std::ptr::null(),
-            &mut hkey,
-            std::ptr::null_mut(),
-        )
-    };
-    if status != ERROR_SUCCESS {
-        return Err(format!("Registre inaccessible (erreur {status})."));
-    }
-    Ok(Key(hkey))
-}
-
-/// Current value, or an empty string when absent or unreadable.
-fn read_disabled() -> String {
-    let Ok(key) = open_key(KEY, false) else {
-        return String::new();
-    };
-    let name = wide(VALUE);
-    let mut kind = 0u32;
-    let mut size = 0u32;
-    // First the size, then the data: the value has no fixed length.
-    let status = unsafe {
-        RegQueryValueExW(
-            key.0,
-            name.as_ptr(),
-            std::ptr::null(),
-            &mut kind,
-            std::ptr::null_mut(),
-            &mut size,
-        )
-    };
-    if status != ERROR_SUCCESS || (kind != REG_SZ && kind != REG_EXPAND_SZ) {
-        return String::new();
-    }
-    let mut buf = vec![0u16; (size as usize).div_ceil(2)];
-    let status = unsafe {
-        RegQueryValueExW(
-            key.0,
-            name.as_ptr(),
-            std::ptr::null(),
-            &mut kind,
-            buf.as_mut_ptr() as *mut u8,
-            &mut size,
-        )
-    };
-    if status != ERROR_SUCCESS {
-        return String::new();
-    }
-    buf.truncate(size as usize / 2);
-    String::from_utf16_lossy(&buf)
-        .trim_end_matches('\0')
-        .to_string()
-}
-
-/// Remember (or forget) that Clipper took Win+V over.
-fn set_marker(on: bool) {
-    let Ok(key) = open_key(MARKER_KEY, true) else {
-        return;
-    };
-    let name = wide(MARKER);
-    unsafe {
-        if on {
-            let one: u32 = 1;
-            RegSetValueExW(
-                key.0,
-                name.as_ptr(),
-                0,
-                REG_DWORD,
-                (&one as *const u32).cast(),
-                4,
-            );
-        } else {
-            RegDeleteValueW(key.0, name.as_ptr());
-        }
-    }
-}
-
 /// Add or remove "V" from Explorer's disabled hotkeys (other letters are kept).
 pub fn set_explorer_win_v_disabled(disabled: bool) -> Result<(), String> {
-    let current = read_disabled();
-    let mut letters: String = current
+    let key = Key::open(KEY, true)?;
+    let mut letters: String = key
+        .string(VALUE)
+        .unwrap_or_default()
         .chars()
         .filter(|c| !c.eq_ignore_ascii_case(&'v'))
         .collect();
     if disabled {
         letters.push('V');
     }
-    let key = open_key(KEY, true)?;
-    let status = if letters.is_empty() {
-        unsafe { RegDeleteValueW(key.0, wide(VALUE).as_ptr()) }
+    if letters.is_empty() {
+        key.delete(VALUE)?;
     } else {
-        let data = wide(&letters);
-        unsafe {
-            RegSetValueExW(
-                key.0,
-                wide(VALUE).as_ptr(),
-                0,
-                REG_SZ,
-                data.as_ptr() as *const u8,
-                (data.len() * 2) as u32,
-            )
-        }
-    };
-    if status != ERROR_SUCCESS && !(letters.is_empty() && status == ERROR_FILE_NOT_FOUND) {
-        return Err(format!(
-            "Écriture dans le registre impossible (erreur {status})."
-        ));
+        key.set_string(VALUE, &letters)?;
     }
-    set_marker(disabled);
+    // Remember (or forget) that Clipper took Win+V over, for the uninstaller.
+    if let Ok(marker) = Key::open(MARKER_KEY, true) {
+        let _ = if disabled {
+            marker.set_dword(MARKER, 1)
+        } else {
+            marker.delete(MARKER)
+        };
+    }
     Ok(())
 }
 

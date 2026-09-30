@@ -22,6 +22,8 @@ pub struct ClipItem {
     pub use_count: i64,
     /// Absolute path of the PNG file for image clips.
     pub image_path: Option<String>,
+    /// Small square version for the lists, once made.
+    pub thumb_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

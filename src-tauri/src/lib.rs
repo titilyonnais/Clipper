@@ -3,6 +3,7 @@ compile_error!("Clipper est une application Windows.");
 
 mod ai;
 mod appicons;
+mod autostart;
 mod backup;
 mod clipboard;
 mod commands;
@@ -12,10 +13,13 @@ mod files;
 mod hotkey;
 mod models;
 mod ocr;
+mod pack;
 mod paste;
+mod registry;
 mod sensitive;
 mod template;
 mod tray;
+mod webcache;
 mod window;
 
 use crate::commands::AppState;
@@ -25,7 +29,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
-use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 static SHORTCUT_OK: AtomicBool = AtomicBool::new(false);
@@ -37,10 +40,6 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_autostart::init(
-            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            Some(vec!["--minimized"]),
-        ))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             setup(app.handle())?;
@@ -109,7 +108,7 @@ pub fn run() {
             }
             // The popup disappears as soon as the user clicks elsewhere.
             tauri::WindowEvent::Focused(false) if window.label() == window::POPUP => {
-                let _ = window.hide();
+                window::dismiss_popup(window.app_handle());
             }
             _ => {}
         })
@@ -129,6 +128,8 @@ pub fn run() {
 }
 
 fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    webcache::tidy(app);
+    window::create_main(app)?;
     // CLIPPER_DATA_DIR allows a portable install or a throw-away test profile.
     let data_dir = match std::env::var_os("CLIPPER_DATA_DIR") {
         Some(dir) => std::path::PathBuf::from(dir),
@@ -141,6 +142,7 @@ fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     // The web view may only load images from Clipper's own folders.
     let scope = app.asset_protocol_scope();
     scope.allow_directory(data_dir.join("images"), false)?;
+    scope.allow_directory(data_dir.join("thumbs"), false)?;
     scope.allow_directory(&icons_dir, false)?;
 
     for (provider, key) in db.take_legacy_api_keys().unwrap_or_default() {
@@ -150,10 +152,10 @@ fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let mut settings = db.get_settings().unwrap_or_default();
-    // The OS is the source of truth for autostart: if the user disabled it
-    // elsewhere, follow that instead of re-registering ourselves.
-    if let Ok(enabled) = app.autolaunch().is_enabled() {
-        settings.launch_at_startup = enabled;
+    // Restore the start-up entry an update may have removed, and follow
+    // Task Manager if the user turned Clipper off there.
+    if autostart::managed(app) {
+        settings.launch_at_startup = autostart::sync(settings.launch_at_startup);
     }
     let _ = db.set_settings(&settings);
 
@@ -215,7 +217,8 @@ fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Hourly retention cleanup and daily backup (first pass shortly after start-up).
+/// Hourly retention cleanup, image recompression and daily backup (first
+/// pass shortly after start-up).
 fn spawn_maintenance(app: AppHandle, db: Arc<Db>) {
     std::thread::Builder::new()
         .name("maintenance".into())
@@ -233,6 +236,9 @@ fn spawn_maintenance(app: AppHandle, db: Arc<Db>) {
                     }
                     Err(e) => log::warn!("retention cleanup failed: {e}"),
                     _ => {}
+                }
+                if pack::run(&db) > 0 {
+                    let _ = app.emit("clips:changed", ());
                 }
                 if s.backups_enabled {
                     if let Err(e) = backup::run_daily(&db) {

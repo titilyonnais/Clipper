@@ -87,7 +87,7 @@ fn finish_paste(
     }
     // Focus must be handed over while Clipper still owns it; hide afterwards.
     let result = crate::paste::paste_into_target(shift_held);
-    window::hide_popup(app);
+    window::dismiss_popup(app);
     result.map(|_| PasteOutcome::Pasted)
 }
 
@@ -269,7 +269,7 @@ pub async fn start_queue(
     }
     queue::start(items)?;
     if window.label() == POPUP {
-        window::hide_popup(&app);
+        window::dismiss_popup(&app);
     }
     Ok(())
 }

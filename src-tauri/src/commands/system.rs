@@ -3,7 +3,6 @@ use crate::models::{BackupInfo, Settings, SettingsView};
 use crate::{backup, credentials, hotkey, tray, window};
 use std::time::Duration;
 use tauri::{AppHandle, Manager, State};
-use tauri_plugin_autostart::ManagerExt as _;
 
 /// Both windows keep a copy of the settings: tell them to reload it.
 fn settings_changed(app: &AppHandle) {
@@ -54,12 +53,11 @@ pub async fn set_settings(
             return Err(e);
         }
     }
-    if settings.launch_at_startup != old.launch_at_startup {
-        let autolaunch = app.autolaunch();
+    if settings.launch_at_startup != old.launch_at_startup && crate::autostart::managed(&app) {
         let res = if settings.launch_at_startup {
-            autolaunch.enable()
+            crate::autostart::enable()
         } else {
-            autolaunch.disable()
+            crate::autostart::disable()
         };
         res.map_err(|e| format!("Démarrage automatique : {e}"))?;
     }
@@ -170,7 +168,7 @@ pub fn hide_popup(app: AppHandle) {
 
 #[tauri::command]
 pub fn show_main(app: AppHandle) {
-    window::hide_popup(&app);
+    window::dismiss_popup(&app);
     window::show_main(&app);
 }
 

@@ -2,6 +2,8 @@
 //! `popup` (quick paste palette, created hidden at start-up so it appears
 //! instantly, centred on the screen that holds the mouse pointer).
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
@@ -13,8 +15,25 @@ pub const POPUP: &str = "popup";
 /// and out.
 const POPUP_SIZE: (f64, f64) = (820.0, 520.0);
 
+/// The main window, as described in `tauri.conf.json`. It is created by
+/// Clipper rather than at start-up so the web view's folder can be tidied
+/// before the engine opens it (see `webcache`).
+pub fn create_main(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    WebviewWindowBuilder::from_config(app, main_config(app))?.build()
+}
+
+fn main_config(app: &AppHandle) -> &tauri::utils::config::WindowConfig {
+    let windows = &app.config().app.windows;
+    windows.iter().find(|w| w.label == MAIN).unwrap_or(&windows[0])
+}
+
 pub fn create_popup(app: &AppHandle) -> tauri::Result<WebviewWindow> {
-    WebviewWindowBuilder::new(app, POPUP, WebviewUrl::App("index.html".into()))
+    let mut builder = WebviewWindowBuilder::new(app, POPUP, WebviewUrl::App("index.html".into()));
+    // Both windows share one engine, which requires the same arguments.
+    if let Some(args) = &main_config(app).additional_browser_args {
+        builder = builder.additional_browser_args(args);
+    }
+    builder
         .title("Clipper")
         .inner_size(POPUP_SIZE.0, POPUP_SIZE.1)
         .decorations(false)
@@ -89,10 +108,35 @@ pub fn show_main(app: &AppHandle) {
     }
 }
 
+/// Incremented at each appearance of the popup.
+static POPUP_SHOWN: AtomicU64 = AtomicU64::new(0);
+
 pub fn hide_popup(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(POPUP) {
         let _ = w.hide();
     }
+}
+
+/// Hide the popup through its interface, which first presents an empty
+/// frame (see `PopupApp`): Windows shows a window's last frame when it
+/// appears again. If the interface does not answer, hide it anyway.
+pub fn dismiss_popup(app: &AppHandle) {
+    let Some(w) = app.get_webview_window(POPUP) else {
+        return;
+    };
+    if !w.is_visible().unwrap_or(false) {
+        return;
+    }
+    let _ = w.emit("popup:dismiss", ());
+    let shown = POPUP_SHOWN.load(Ordering::SeqCst);
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(150));
+        // Not if it was shown again meanwhile.
+        if POPUP_SHOWN.load(Ordering::SeqCst) == shown {
+            hide_popup(&app);
+        }
+    });
 }
 
 pub fn show_popup(app: &AppHandle) {
@@ -100,6 +144,7 @@ pub fn show_popup(app: &AppHandle) {
         return;
     };
     crate::paste::remember_target();
+    POPUP_SHOWN.fetch_add(1, Ordering::SeqCst);
     center_on_pointer_screen(app, &w);
     let _ = w.show();
     let _ = w.set_focus();
@@ -111,7 +156,7 @@ pub fn toggle_popup(app: &AppHandle) {
         return;
     };
     if w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false) {
-        let _ = w.hide();
+        dismiss_popup(app);
     } else {
         show_popup(app);
     }
