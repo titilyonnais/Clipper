@@ -211,6 +211,11 @@ impl Db {
             created_at: r.get(11)?,
             used_at: r.get(12)?,
             use_count: r.get(13)?,
+            thumb_path: image_file
+                .as_deref()
+                .map(|f| self.thumb_path(f))
+                .filter(|p| p.exists())
+                .map(|p| p.to_string_lossy().into_owned()),
             image_path: image_file.map(|f| self.image_path(&f).to_string_lossy().into_owned()),
             content: None,
             ocr_text: None,
@@ -350,7 +355,7 @@ impl Db {
         };
         for file in files.iter().flatten() {
             if !self.image_in_use(file)? {
-                let _ = std::fs::remove_file(self.image_path(file));
+                self.remove_image(file);
             }
         }
         Ok(files.len())
@@ -453,7 +458,7 @@ impl Db {
         };
         for file in files {
             if !self.image_in_use(&file)? {
-                let _ = std::fs::remove_file(self.image_path(&file));
+                self.remove_image(&file);
             }
         }
         Ok(())

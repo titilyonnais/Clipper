@@ -14,6 +14,7 @@ import { Menu, useMenu } from "@/ui/menu";
 import { EmptyState, Kbd } from "@/ui/misc";
 import { Splitter, type PanelWidth } from "@/ui/splitter";
 import { PreviewPanel } from "./PreviewPanel";
+import { DateFilter, rangeLabel } from "./DateFilter";
 import type { View } from "./Sidebar";
 import type { ClipKind, Collection, ListParams, TimeRange } from "@/types";
 
@@ -39,14 +40,6 @@ const KIND_OPTIONS = KINDS.map((k) => ({
     k.label
   ),
 }));
-
-const RANGES: { value: TimeRange; label: string }[] = [
-  { value: null, label: "Toutes les dates" },
-  { value: "today", label: "Aujourd'hui" },
-  { value: "yesterday", label: "Hier" },
-  { value: "week", label: "7 derniers jours" },
-  { value: "month", label: "30 derniers jours" },
-];
 
 export interface HistoryHandle {
   focusSearch: () => void;
@@ -86,7 +79,6 @@ export const HistoryView = forwardRef<HistoryHandle, Props>(function HistoryView
   const searchRef = useRef<HTMLInputElement>(null);
   const toolbar = useRef<HTMLDivElement>(null);
   const toolbarHeight = useHeight(toolbar);
-  const rangeMenu = useMenu();
   const context = useMenu();
 
   useImperativeHandle(ref, () => ({
@@ -248,26 +240,16 @@ export const HistoryView = forwardRef<HistoryHandle, Props>(function HistoryView
                 )
               )}
             </div>
-            <IconButton
-              label={range ? `Période : ${RANGES.find((r) => r.value === range)?.label}` : "Filtrer par date"}
-              size="lg"
-              variant={range ? "secondary" : "outline"}
-              active={!!range}
-              onClick={(e) => rangeMenu.openBelow(e.currentTarget, "end")}
-              className={cn("relative", !range && "border-input/70 bg-muted/60")}
-            >
-              <CalendarDays />
-              {range && <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-foreground" />}
-            </IconButton>
+            <DateFilter value={range} onChange={setRange} />
           </div>
           <Segmented size="sm" stretch label="Type" value={kind} onChange={setKind} options={KIND_OPTIONS} />
           {range && (
             <div className="flex h-5 animate-in items-center gap-2 text-xs text-muted-foreground">
               <CalendarDays className="size-3.5" />
-              {RANGES.find((r) => r.value === range)?.label}
+              <span className="truncate">{rangeLabel(range)}</span>
               <button
                 type="button"
-                className="ml-auto text-subtle-foreground transition-colors hover:text-foreground"
+                className="ml-auto shrink-0 text-subtle-foreground transition-colors hover:text-foreground"
                 onClick={() => setRange(null)}
               >
                 Toutes les dates
@@ -352,13 +334,6 @@ export const HistoryView = forwardRef<HistoryHandle, Props>(function HistoryView
         emptyOffset={toolbarHeight}
       />
 
-      {rangeMenu.anchor && (
-        <Menu
-          anchor={rangeMenu.anchor}
-          onClose={rangeMenu.close}
-          entries={RANGES.map((r) => ({ label: r.label, checked: r.value === range, onSelect: () => setRange(r.value) }))}
-        />
-      )}
       {context.anchor && menuClips.length > 0 && (
         <Menu
           anchor={context.anchor}

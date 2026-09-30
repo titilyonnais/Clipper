@@ -16,6 +16,8 @@ export interface ClipItem {
   used_at: string;
   use_count: number;
   image_path: string | null;
+  /** Small square version for the lists, once made. */
+  thumb_path: string | null;
   /** Only present when fetched with `api.get`. */
   content?: string;
   ocr_text?: string | null;
@@ -101,7 +103,8 @@ export interface AiResponse {
 
 export type AiAction = "summarize" | "explain" | "rephrase" | "fix" | "translate";
 export type CopyFormat = "trim" | "one_line" | "lowercase" | "uppercase" | "json_escape" | "url_encode" | "base64";
-export type TimeRange = "today" | "yesterday" | "week" | "month" | null;
+/** A period (`today`, `week`, `month`, `3m`, `6m`, `1y`), a `YYYY-MM-DD` day or a `from..to` span. */
+export type TimeRange = string | null;
 
 export interface FileInfo {
   path: string;

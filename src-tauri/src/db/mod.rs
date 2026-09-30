@@ -23,6 +23,7 @@ pub struct Db {
     conn: Mutex<Connection>,
     path: PathBuf,
     images_dir: PathBuf,
+    thumbs_dir: PathBuf,
     /// When the deletion that can still be undone happened.
     undo_since: Mutex<Option<std::time::Instant>>,
 }
@@ -47,11 +48,14 @@ impl Db {
     pub fn open(data_dir: &Path) -> Result<Self> {
         let images_dir = data_dir.join("images");
         std::fs::create_dir_all(&images_dir)?;
+        let thumbs_dir = data_dir.join("thumbs");
+        std::fs::create_dir_all(&thumbs_dir)?;
         let path = data_dir.join("clipper.db");
         let db = Self {
             conn: Mutex::new(open_connection(&path)?),
             path,
             images_dir,
+            thumbs_dir,
             undo_since: Mutex::new(None),
         };
         db.migrate()?;
@@ -77,7 +81,8 @@ impl Db {
     }
 
     /// Image files are stored beside the database. Remove the ones no clip
-    /// uses any more (left by a crash before a deletion became final), and
+    /// uses any more (left by a crash before a deletion became final, or
+    /// half-written), their thumbnails, and
     /// the image clips whose file is gone (a backup restored from before
     /// the file was deleted).
     fn tidy_images(&self) -> Result<()> {
@@ -92,7 +97,12 @@ impl Db {
             let name = entry.file_name().to_string_lossy().into_owned();
             if used.contains(&name) {
                 present.insert(name);
-            } else if name.ends_with(".png") {
+            } else if name.ends_with(".png") || name.ends_with(".tmp") {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+        for entry in std::fs::read_dir(&self.thumbs_dir)?.flatten() {
+            if !present.contains(entry.file_name().to_string_lossy().as_ref()) {
                 let _ = std::fs::remove_file(entry.path());
             }
         }
@@ -245,6 +255,28 @@ impl Db {
         self.images_dir.join(name)
     }
 
+    /// Small square version of an image, made in the background (see `pack`).
+    pub fn thumb_path(&self, file: &str) -> PathBuf {
+        let name = Path::new(file).file_name().unwrap_or_default();
+        self.thumbs_dir.join(name)
+    }
+
+    /// Delete an image file and its thumbnail.
+    fn remove_image(&self, file: &str) {
+        let _ = std::fs::remove_file(self.image_path(file));
+        let _ = std::fs::remove_file(self.thumb_path(file));
+    }
+
+    /// Stored image files, most recently used first.
+    pub fn image_files(&self) -> Result<Vec<String>> {
+        let c = self.conn.lock();
+        let mut stmt = c.prepare(
+            "SELECT content FROM clips WHERE kind = 'image' GROUP BY content ORDER BY MAX(used_at) DESC",
+        )?;
+        let rows = stmt.query_map([], |r| r.get(0))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
     fn reclaim_space(&self) {
         let c = self.conn.lock();
         let _ = c.execute_batch("PRAGMA incremental_vacuum;");
@@ -257,12 +289,14 @@ impl Db {
         for ext in ["db-wal", "db-shm"] {
             total += file_len(&self.path.with_extension(ext));
         }
-        if let Ok(entries) = std::fs::read_dir(&self.images_dir) {
-            total += entries
-                .flatten()
-                .filter_map(|e| e.metadata().ok())
-                .map(|m| m.len())
-                .sum::<u64>();
+        for dir in [&self.images_dir, &self.thumbs_dir] {
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                total += entries
+                    .flatten()
+                    .filter_map(|e| e.metadata().ok())
+                    .map(|m| m.len())
+                    .sum::<u64>();
+            }
         }
         total
     }
@@ -520,22 +554,34 @@ fn start_of_local_day(d: chrono::NaiveDate) -> String {
         .to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
-/// Resolve a range token (today, yesterday, week, month or a YYYY-MM-DD
-/// day) to UTC bounds based on local calendar days.
+/// Resolve a range token to UTC bounds based on local calendar days:
+/// `today`, `yesterday`, `week` (7 days), `month` (30 days), `3m`, `6m`,
+/// `1y`, a `YYYY-MM-DD` day or an inclusive `YYYY-MM-DD..YYYY-MM-DD` span.
 fn time_range_bounds(range: &str) -> Option<(String, String)> {
-    use chrono::Duration;
+    use chrono::{Duration, Months, NaiveDate};
     let today = chrono::Local::now().date_naive();
     let tomorrow = today + Duration::days(1);
+    let months_ago = |n| today.checked_sub_months(Months::new(n)).map(|d| d + Duration::days(1));
+    let day = |s: &str| NaiveDate::parse_from_str(s.trim(), "%Y-%m-%d").ok();
     let (from, to) = match range {
         "today" => (today, tomorrow),
         "yesterday" => (today - Duration::days(1), today),
         "week" => (today - Duration::days(6), tomorrow),
         "month" => (today - Duration::days(29), tomorrow),
+        "3m" => (months_ago(3)?, tomorrow),
+        "6m" => (months_ago(6)?, tomorrow),
+        "1y" => (months_ago(12)?, tomorrow),
         "" => return None,
-        day => {
-            let d = chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d").ok()?;
-            (d, d + Duration::days(1))
-        }
+        span => match span.split_once("..") {
+            Some((a, b)) => {
+                let (a, b) = (day(a)?, day(b)?);
+                (a.min(b), a.max(b) + Duration::days(1))
+            }
+            None => {
+                let d = day(span)?;
+                (d, d + Duration::days(1))
+            }
+        },
     };
     Some((start_of_local_day(from), start_of_local_day(to)))
 }

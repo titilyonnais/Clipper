@@ -13,6 +13,7 @@
     "windows": [
       {
         "label": "main",
+        "create": false,
         "title": "Clipper",
         "width": 1180,
         "height": 760,
@@ -25,7 +26,8 @@
         "skipTaskbar": false,
         "shadow": true,
         "backgroundColor": "#000000",
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-component-update --disk-cache-size=8388608 --disable-gpu-shader-disk-cache --force-color-profile=srgb"
       }
     ],
     "security": {
