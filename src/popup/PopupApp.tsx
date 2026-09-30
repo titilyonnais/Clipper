@@ -95,7 +95,7 @@ export function PopupApp() {
   return (
     <div
       className={cn(
-        "relative flex h-screen flex-col overflow-hidden rounded-[10px] bg-background",
+        "relative flex h-screen flex-col overflow-hidden",
         phase === "open" && "popup-open animate-popup-in",
         phase === "closing" && "pointer-events-none animate-popup-out",
         phase === "hidden" && "opacity-0",

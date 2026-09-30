@@ -98,7 +98,8 @@ function DatePanel({
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  // `arrow`: horizontal position of the pointer to the button, in the panel.
+  const [pos, setPos] = useState<{ left: number; top: number; arrow: number; below: boolean } | null>(null);
   const custom = customBounds(value);
   const today = iso(new Date());
   const [month, setMonth] = useState(() => {
@@ -112,11 +113,16 @@ function DatePanel({
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
+    // Centred under the row of the search field and the button, pointing at the button.
     const r = trigger.getBoundingClientRect();
+    const row = (trigger.parentElement ?? trigger).getBoundingClientRect();
     const { width, height } = el.getBoundingClientRect();
-    const left = Math.max(6, Math.min(r.right - width, window.innerWidth - width - 6));
-    const top = r.bottom + height + 10 > window.innerHeight ? Math.max(6, r.top - height - 4) : r.bottom + 4;
-    setPos({ left, top });
+    const margin = 8;
+    const left = Math.max(margin, Math.min(row.left + row.width / 2 - width / 2, window.innerWidth - width - margin));
+    const below = r.bottom + 10 + height + margin <= window.innerHeight;
+    const top = below ? r.bottom + 10 : Math.max(margin, r.top - 10 - height);
+    const arrow = Math.max(16, Math.min(r.left + r.width / 2 - left, width - 16));
+    setPos({ left, top, arrow, below });
     el.focus();
   }, [trigger]);
 
@@ -177,8 +183,21 @@ function DatePanel({
         }
       }}
       style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? "visible" : "hidden" }}
-      className="fixed z-50 flex origin-top-right animate-pop rounded-dialog border border-border bg-popover shadow-lg shadow-black/30 outline-none"
+      className={cn(
+        "fixed z-50 flex animate-pop rounded-dialog border border-border bg-popover shadow-lg shadow-black/30 outline-none",
+        pos?.below === false ? "origin-bottom" : "origin-top",
+      )}
     >
+      {pos && (
+        <span
+          aria-hidden="true"
+          style={{ left: pos.arrow - 6 }}
+          className={cn(
+            "absolute size-3 rotate-45 border-border bg-popover",
+            pos.below ? "-top-[6.5px] border-t border-l" : "-bottom-[6.5px] border-r border-b",
+          )}
+        />
+      )}
       <div className="flex w-44 flex-col gap-px border-r border-line p-1.5">
         {PRESETS.map((p) => {
           const checked = p.value === value;

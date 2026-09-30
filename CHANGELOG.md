@@ -1,5 +1,24 @@
 # Notes de version
 
+## 3.5.0
+
+### Mises à jour automatiques
+- Paramètres › À propos : recherche des nouvelles versions sur GitHub, au démarrage puis toutes les six heures (désactivable). Une pastille discrète apparaît dans la barre latérale quand une version est disponible.
+- Installation en un clic : fenêtre noire avec les nouveautés, puis une simple barre de progression. Clipper se ferme, s'installe sans aucune fenêtre et redémarre tout seul.
+- Chaque installateur est signé : Clipper refuse tout fichier dont la signature ne correspond pas à sa clé. Win+V, le démarrage avec Windows et l'historique sont conservés.
+
+### Interface
+- Nouveau filtre « Sensibles » dans la barre latérale : uniquement les éléments masqués (mots de passe, clés…).
+- Filtre par date : le calendrier s'ouvre centré sous les boutons, avec une flèche qui les désigne ; au-dessus s'il manque de place.
+- Collage rapide : plus de contour clair ni de flash à la fermeture et après Ctrl+V. La fenêtre redevient opaque comme en 3.2 ; coins arrondis et ombre sont dessinés par Windows.
+
+### Applications d'origine
+- Ce qui est copié dans Clipper apparaît sous « Clipper » avec son logo, et non plus « MSEdgeWebView2 ». Idem pour les autres applications à interface web (Teams, Outlook…). Les anciens éléments sont corrigés.
+- Icônes d'applications plus nettes (64 px) ; celles qui manquaient (PowerShell…) sont retrouvées en arrière-plan et s'affichent sans redémarrer.
+
+### Dépendances
+- Mise à jour de toutes les dépendances (Vite 8, TypeScript 7, React, Tauri, SQLite…).
+
 ## 3.4.0
 
 ### Interface

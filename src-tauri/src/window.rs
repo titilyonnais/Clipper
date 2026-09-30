@@ -10,9 +10,9 @@ use tauri::{
 
 pub const MAIN: &str = "main";
 pub const POPUP: &str = "popup";
-/// The popup window is transparent and exactly the size of its panel, which
-/// the interface draws with rounded corners, so the whole panel can fade in
-/// and out.
+/// Size of the popup. Its window is opaque, with the rounded corners and
+/// shadow Windows gives its own popups: a transparent window let a light
+/// outline show around the panel while it animated.
 const POPUP_SIZE: (f64, f64) = (820.0, 520.0);
 
 /// The main window, as described in `tauri.conf.json`. It is created by
@@ -24,7 +24,10 @@ pub fn create_main(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 
 fn main_config(app: &AppHandle) -> &tauri::utils::config::WindowConfig {
     let windows = &app.config().app.windows;
-    windows.iter().find(|w| w.label == MAIN).unwrap_or(&windows[0])
+    windows
+        .iter()
+        .find(|w| w.label == MAIN)
+        .unwrap_or(&windows[0])
 }
 
 pub fn create_popup(app: &AppHandle) -> tauri::Result<WebviewWindow> {
@@ -44,28 +47,11 @@ pub fn create_popup(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .skip_taskbar(true)
         .visible(false)
         .focused(false)
-        .shadow(false)
-        .transparent(true)
+        .shadow(true)
+        .background_color(tauri::window::Color(0, 0, 0, 255))
         .drag_and_drop(false)
         .build()
-        .inspect(bare_frame)
-}
-
-/// The popup window is only a transparent canvas for its panel: Windows must
-/// draw nothing around it (no frame, shadow, rounded corners or opening
-/// animation, which would outline the transparent area in grey).
-fn bare_frame(w: &WebviewWindow) {
-    use windows_sys::Win32::Graphics::Dwm::{
-        DWMNCRP_DISABLED, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE, DWMWA_NCRENDERING_POLICY,
-        DWMWA_TRANSITIONS_FORCEDISABLED, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
-    };
-    if let Ok(hwnd) = w.hwnd() {
-        let hwnd = hwnd.0 as windows_sys::Win32::Foundation::HWND;
-        set_dwm_attribute(hwnd, DWMWA_NCRENDERING_POLICY, &DWMNCRP_DISABLED);
-        set_dwm_attribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &DWMWCP_DONOTROUND);
-        set_dwm_attribute(hwnd, DWMWA_BORDER_COLOR, &DWMWA_COLOR_NONE);
-        set_dwm_attribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, &1i32);
-    }
+        .inspect(|w| style_frame(w, false))
 }
 
 /// Windows 11 draws a thin light frame around undecorated windows, brightest

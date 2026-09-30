@@ -15,10 +15,12 @@ mod models;
 mod ocr;
 mod pack;
 mod paste;
+mod processes;
 mod registry;
 mod sensitive;
 mod template;
 mod tray;
+mod update;
 mod webcache;
 mod window;
 
@@ -41,6 +43,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(update::Pending::default())
         .setup(|app| {
             setup(app.handle())?;
             Ok(())
@@ -96,6 +100,9 @@ pub fn run() {
             commands::system::backup_now,
             commands::system::restore_backup,
             commands::system::open_data_folder,
+            update::check_update,
+            update::install_update,
+            update::take_update_notice,
             commands::ai::ai_health,
             commands::ai::ai_run,
             commands::ai::ai_smart_tag,
@@ -116,15 +123,20 @@ pub fn run() {
         .expect("error while building Clipper")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
-                clipboard::queue::stop_and_wait();
-                if let Some(state) = app.try_state::<AppState>() {
-                    if let Err(e) = state.db.forget_undo() {
-                        log::warn!("forget_undo: {e}");
-                    }
-                    state.db.checkpoint();
-                }
+                before_exit(app);
             }
         });
+}
+
+/// What must be done before Clipper closes (also before an update installs).
+pub fn before_exit(app: &AppHandle) {
+    clipboard::queue::stop_and_wait();
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Err(e) = state.db.forget_undo() {
+            log::warn!("forget_undo: {e}");
+        }
+        state.db.checkpoint();
+    }
 }
 
 fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
@@ -180,7 +192,12 @@ fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         }
         if let Some(path) = stored.app_path {
             let dir = icon_dir.clone();
-            std::thread::spawn(move || appicons::ensure_icon(&dir, &path));
+            let handle = handle.clone();
+            std::thread::spawn(move || {
+                if appicons::ensure_icon(&dir, &path) {
+                    let _ = handle.emit("icons:changed", ());
+                }
+            });
         }
     });
 
@@ -210,6 +227,7 @@ fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         log::warn!("{e}");
     }
     spawn_maintenance(app.clone(), db);
+    update::spawn_checks(app.clone());
 
     if !std::env::args().any(|a| a == "--minimized") || !settings.onboarded {
         window::show_main(app);
@@ -236,6 +254,13 @@ fn spawn_maintenance(app: AppHandle, db: Arc<Db>) {
                     }
                     Err(e) => log::warn!("retention cleanup failed: {e}"),
                     _ => {}
+                }
+                let apps: Vec<String> = db
+                    .source_apps()
+                    .map(|apps| apps.into_iter().map(|a| a.name).collect())
+                    .unwrap_or_default();
+                if appicons::backfill(&db.data_dir().join("icons"), &apps) > 0 {
+                    let _ = app.emit("icons:changed", ());
                 }
                 if pack::run(&db) > 0 {
                     let _ = app.emit("clips:changed", ());

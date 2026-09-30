@@ -1,5 +1,10 @@
 //! Icons of the applications clips come from, cached as PNG files named
 //! after the executable (e.g. `icons/chrome.exe.png`).
+//!
+//! An icon is extracted when a clip arrives from a new application. Those
+//! that could not be (application closed, no rights at that moment) are
+//! looked for again during maintenance, by finding the executable among
+//! running processes, the registered applications and the `PATH`.
 
 use std::path::{Path, PathBuf};
 use windows_sys::Win32::Graphics::Gdi::{
@@ -7,7 +12,12 @@ use windows_sys::Win32::Graphics::Gdi::{
     BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
 };
 use windows_sys::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
-use windows_sys::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, ICONINFO};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    DestroyIcon, GetIconInfo, PrivateExtractIconsW, HICON, ICONINFO,
+};
+
+/// Side of the extracted icons: sharp at 200 % where they are shown at 16 to 20 px.
+const SIDE: i32 = 64;
 
 pub fn icon_path(dir: &Path, exe_name: &str) -> PathBuf {
     let safe: String = exe_name
@@ -18,26 +28,87 @@ pub fn icon_path(dir: &Path, exe_name: &str) -> PathBuf {
 }
 
 /// Extract and cache the icon of `exe_path` if it is not cached yet.
-pub fn ensure_icon(dir: &Path, exe_path: &str) {
+/// Returns whether a new icon was written.
+pub fn ensure_icon(dir: &Path, exe_path: &str) -> bool {
     let Some(name) = Path::new(exe_path)
         .file_name()
         .map(|n| n.to_string_lossy().to_lowercase())
     else {
-        return;
+        return false;
     };
     let dest = icon_path(dir, &name);
     if dest.exists() {
-        return;
+        return false;
     }
-    if let Some(png) = extract_png(exe_path) {
-        let _ = std::fs::create_dir_all(dir);
-        let _ = std::fs::write(dest, png);
+    let Some(png) = extract_png(exe_path) else {
+        return false;
+    };
+    let _ = std::fs::create_dir_all(dir);
+    std::fs::write(dest, png).is_ok()
+}
+
+/// Look for the icons still missing among `apps` (executable names).
+/// Returns the number of icons written.
+pub fn backfill(dir: &Path, apps: &[String]) -> usize {
+    let missing: Vec<&String> = apps
+        .iter()
+        .filter(|a| !icon_path(dir, a).exists())
+        .collect();
+    if missing.is_empty() {
+        return 0;
     }
+    let running = crate::processes::snapshot();
+    missing
+        .into_iter()
+        .filter_map(|app| find_exe(app, &running))
+        .filter(|path| ensure_icon(dir, path))
+        .count()
+}
+
+/// Where the executable `name` is: a running copy, the applications
+/// registered with Windows, or the `PATH`.
+fn find_exe(name: &str, running: &[crate::processes::Process]) -> Option<String> {
+    let name = name.to_lowercase();
+    if !name.ends_with(".exe") || name.contains(['\\', '/']) {
+        return None;
+    }
+    if let Some(path) = running
+        .iter()
+        .filter(|p| p.exe == name)
+        .find_map(|p| crate::processes::image_path(p.pid))
+    {
+        return Some(path);
+    }
+    let registered = crate::registry::read_any_hive(
+        &format!(r"Software\Microsoft\Windows\CurrentVersion\App Paths\{name}"),
+        "",
+    )
+    .map(|p| p.trim_matches('"').to_string())
+    .filter(|p| Path::new(p).is_file());
+    registered.or_else(|| {
+        std::env::var_os("PATH").and_then(|paths| {
+            std::env::split_paths(&paths)
+                .map(|d| d.join(&name))
+                .find(|p| p.is_file())
+                .map(|p| p.to_string_lossy().into_owned())
+        })
+    })
 }
 
 fn extract_png(exe_path: &str) -> Option<Vec<u8>> {
     let wide: Vec<u16> = exe_path.encode_utf16().chain(std::iter::once(0)).collect();
     unsafe {
+        // The large version from the file itself, else the shell's 32 px one.
+        let mut icon: HICON = std::ptr::null_mut();
+        let mut id = 0u32;
+        let found = PrivateExtractIconsW(wide.as_ptr(), 0, SIDE, SIDE, &mut icon, &mut id, 1, 0);
+        if found == 1 && !icon.is_null() {
+            let png = icon_to_png(icon);
+            DestroyIcon(icon);
+            if png.is_some() {
+                return png;
+            }
+        }
         let mut info: SHFILEINFOW = std::mem::zeroed();
         let ok = SHGetFileInfoW(
             wide.as_ptr(),
@@ -123,4 +194,22 @@ unsafe fn icon_to_png(icon: windows_sys::Win32::UI::WindowsAndMessaging::HICON) 
         DeleteObject(ii.hbmMask);
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn extracts_a_large_icon() {
+        let windir = std::env::var("WINDIR").unwrap_or_else(|_| r"C:\Windows".into());
+        let png = super::extract_png(&format!(r"{windir}\explorer.exe")).expect("icon");
+        let img = image::load_from_memory(&png).unwrap();
+        assert_eq!(img.width(), super::SIDE as u32);
+    }
+
+    #[test]
+    fn finds_executables_on_the_path() {
+        let path = super::find_exe("cmd.exe", &[]).expect("cmd.exe");
+        assert!(path.to_lowercase().ends_with(r"\cmd.exe"));
+        assert!(super::find_exe(r"..\cmd.exe", &[]).is_none());
+    }
 }

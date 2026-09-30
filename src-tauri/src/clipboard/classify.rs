@@ -8,10 +8,12 @@ pub const PREVIEW_CHARS: usize = 280;
 /// used as image file names, so its form must never change.
 pub fn sha256_hex(data: &[u8]) -> String {
     use std::fmt::Write;
-    Sha256::digest(data).iter().fold(String::with_capacity(64), |mut out, b| {
-        let _ = write!(out, "{b:02x}");
-        out
-    })
+    Sha256::digest(data)
+        .iter()
+        .fold(String::with_capacity(64), |mut out, b| {
+            let _ = write!(out, "{b:02x}");
+            out
+        })
 }
 
 pub fn hash_text(s: &str) -> String {
@@ -213,6 +215,9 @@ mod hash_tests {
             super::sha256_hex(b"abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
-        assert_eq!(super::hash_text("abc"), format!("t:{}", super::sha256_hex(b"abc")));
+        assert_eq!(
+            super::hash_text("abc"),
+            format!("t:{}", super::sha256_hex(b"abc"))
+        );
     }
 }

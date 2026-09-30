@@ -1,5 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { cn, appIconUrl, appLabel } from "@/lib/utils";
+
+// Incremented when Clipper writes new application icons: images that failed
+// to load are tried again. One listener for all the icons of a window.
+let iconVersion = 0;
+const iconListeners = new Set<() => void>();
+listen("icons:changed", () => {
+  iconVersion++;
+  iconListeners.forEach((l) => l());
+});
+const subscribeIcons = (l: () => void) => {
+  iconListeners.add(l);
+  return () => iconListeners.delete(l);
+};
 
 export function Kbd({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
@@ -64,7 +78,9 @@ export function AppIcon({
   app: string;
   className?: string;
 }) {
+  const version = useSyncExternalStore(subscribeIcons, () => iconVersion);
   const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [version, app]);
   if (!dataDir || failed) {
     return (
       <span
@@ -80,7 +96,7 @@ export function AppIcon({
   }
   return (
     <img
-      src={appIconUrl(dataDir, app)}
+      src={`${appIconUrl(dataDir, app)}?v=${version}`}
       alt=""
       draggable={false}
       onError={() => setFailed(true)}

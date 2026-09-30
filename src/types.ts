@@ -75,6 +75,7 @@ export interface Settings {
   max_items: number;
   auto_delete_days: number;
   backups_enabled: boolean;
+  check_updates: boolean;
   onboarded: boolean;
   ai_provider: AiProvider;
   ollama_url: string;
@@ -122,6 +123,7 @@ export interface ListParams {
   source_app?: string | null;
   tags?: string[];
   pinned_only?: boolean;
+  sensitive_only?: boolean;
   time_range?: TimeRange;
   limit?: number;
   offset?: number;
@@ -146,3 +148,10 @@ export interface QueueStatus {
 }
 
 export type PasteOutcome = "pasted" | "copied";
+
+export interface UpdateInfo {
+  version: string;
+  current: string;
+  notes: string | null;
+  date: string | null;
+}

@@ -12,6 +12,8 @@ import { HistoryView, viewTitle, type HistoryHandle } from "./HistoryView";
 import { SnippetsView, useSnippets } from "./SnippetsView";
 import { SettingsView } from "./SettingsView";
 import { Onboarding } from "./Onboarding";
+import { UpdateDialog } from "./UpdateDialog";
+import { toast } from "@/ui/toast";
 import type { Collection, SourceApp, Stats } from "@/types";
 
 /** Below this window width the sidebar shows its icons only. */
@@ -60,6 +62,14 @@ export function MainApp() {
     api.sourceApps().then(setApps);
   }, []);
   useEffect(refresh, [refresh]);
+  // Restarted by an update installed from Clipper: say so once.
+  useEffect(() => {
+    api.takeUpdateNotice().then((previous) => {
+      if (!previous) return;
+      api.showMain();
+      toast(`Clipper a été mis à jour (${previous} → ${__APP_VERSION__}).`);
+    });
+  }, []);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useTauriEvent("clips:changed", () => {
     clearTimeout(timer.current);
@@ -151,6 +161,7 @@ export function MainApp() {
       </div>
 
       {settings && !settings.onboarded && !onboardingDone && <Onboarding onDone={() => setOnboardingDone(true)} />}
+      <UpdateDialog />
     </div>
   );
 }

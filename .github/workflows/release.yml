@@ -56,18 +56,40 @@ jobs:
 
       - run: npm ci
 
+      # The notes of this version in CHANGELOG.md: shown on the release page
+      # and by Clipper when it offers the update.
+      - name: Release notes
+        id: notes
+        shell: bash
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          awk -v head="## ${TAG#v}" '$0 == head { found = 1; next } /^## / { if (found) exit } found' CHANGELOG.md > notes.md
+          {
+            echo 'body<<CLIPPER_NOTES_END'
+            cat notes.md
+            echo
+            echo '---'
+            echo "Téléchargez **Clipper_*_x64-setup.exe** (recommandé : installation sans droits administrateur) ou le fichier **.msi**. Les versions installées se mettent à jour depuis Paramètres › À propos."
+            echo "Empreintes SHA-256 : \`SHA256SUMS.txt\`."
+            echo 'CLIPPER_NOTES_END'
+          } >> "$GITHUB_OUTPUT"
+
+      # Signs the installers for the updater and publishes latest.json.
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ needs.version.outputs.tag }}
           releaseName: Clipper ${{ needs.version.outputs.tag }}
           releaseCommitish: ${{ github.sha }}
-          releaseBody: |
-            Téléchargez **Clipper_*_x64-setup.exe** (recommandé : installation sans droits administrateur) ou le fichier **.msi**.
-            Empreintes SHA-256 : `SHA256SUMS.txt`. Nouveautés : [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ needs.version.outputs.tag }}/CHANGELOG.md).
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: false
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
 
       - name: Publish SHA-256 checksums
         shell: pwsh

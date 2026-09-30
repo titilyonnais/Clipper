@@ -47,7 +47,11 @@ pub fn list(db: &Db) -> Vec<BackupInfo> {
             })
         })
         .collect();
-    out.sort_by(|a, b| b.created_at.cmp(&a.created_at).then_with(|| b.name.cmp(&a.name)));
+    out.sort_by(|a, b| {
+        b.created_at
+            .cmp(&a.created_at)
+            .then_with(|| b.name.cmp(&a.name))
+    });
     out
 }
 
@@ -65,7 +69,10 @@ pub fn run_daily(db: &Db) -> anyhow::Result<bool> {
 
 /// Back up now (from the settings), whatever the day's backup.
 pub fn run_now(db: &Db) -> anyhow::Result<()> {
-    write(db, &format!("{PREFIX}{}", chrono::Local::now().format("%Y-%m-%d-%H%M%S")))
+    write(
+        db,
+        &format!("{PREFIX}{}", chrono::Local::now().format("%Y-%m-%d-%H%M%S")),
+    )
 }
 
 /// Write a compressed backup named `stem`, then keep only the most recent ones.
@@ -127,7 +134,10 @@ pub fn restore(db: &Db, name: &str) -> Result<(), String> {
     // Keep the current state, in case the restore is a mistake.
     write(
         db,
-        &format!("{PREFIX}{}-avant-restauration", chrono::Local::now().format("%Y-%m-%d-%H%M%S")),
+        &format!(
+            "{PREFIX}{}-avant-restauration",
+            chrono::Local::now().format("%Y-%m-%d-%H%M%S")
+        ),
     )
     .map_err(|e| e.to_string())?;
     if !name.ends_with(PACKED) {
@@ -162,8 +172,14 @@ mod tests {
         std::fs::create_dir_all(dir(&db)).unwrap();
         let old = dir(&db).join("clipper-2020-01-01.db");
         db.backup_to(&old).unwrap();
-        let date = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_577_880_000);
-        File::options().write(true).open(&old).unwrap().set_modified(date).unwrap();
+        let date =
+            std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_577_880_000);
+        File::options()
+            .write(true)
+            .open(&old)
+            .unwrap()
+            .set_modified(date)
+            .unwrap();
         run_now(&db).unwrap();
         compress_old(&db);
         let names: Vec<String> = list(&db).into_iter().map(|b| b.name).collect();

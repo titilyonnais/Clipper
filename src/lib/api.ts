@@ -17,6 +17,7 @@ import type {
   Snippet,
   SourceApp,
   Stats,
+  UpdateInfo,
 } from "@/types";
 
 export const api = {
@@ -82,6 +83,12 @@ export const api = {
   backupNow: () => invoke<BackupInfo[]>("backup_now"),
   restoreBackup: (name: string) => invoke<void>("restore_backup", { name }),
   openDataFolder: () => invoke<void>("open_data_folder"),
+
+  checkUpdate: () => invoke<UpdateInfo | null>("check_update"),
+  /** Downloads, then closes Clipper for the installer, which restarts it. */
+  installUpdate: () => invoke<void>("install_update"),
+  /** The version Clipper was updated from, once, after an update. */
+  takeUpdateNotice: () => invoke<string | null>("take_update_notice"),
 
   aiHealth: () => invoke<AiResponse>("ai_health"),
   aiRun: (id: number, action: AiAction, lang?: string) =>
