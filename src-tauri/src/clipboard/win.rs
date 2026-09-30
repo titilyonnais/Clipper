@@ -116,6 +116,21 @@ fn owner_app() -> Result<Option<OwnerApp>, Skip> {
     Ok((!name.is_empty()).then_some(OwnerApp { name, path }))
 }
 
+/// Open the clipboard, waiting up to `ms` milliseconds for the application
+/// holding it (Office rendering a copy, a remote session…) to close it.
+fn open_clipboard(ms: u64) -> Option<Clipboard> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(ms);
+    loop {
+        if let Ok(clipboard) = Clipboard::new_attempts(2) {
+            return Some(clipboard);
+        }
+        if std::time::Instant::now() >= deadline {
+            return None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
 pub fn is_ignored(name: &str, ignore_apps: &[String]) -> bool {
     ignore_apps.iter().any(|a| {
         let a = a.trim().to_lowercase();
@@ -134,7 +149,7 @@ pub fn capture(ignore_apps: &[String], keep_rich: bool) -> Result<Captured, Skip
     // Other applications cannot use the clipboard while it is open: copy the
     // raw data, close it, and only then convert anything.
     let (read, rich) = {
-        let _guard = Clipboard::new_attempts(10).map_err(|_| Skip::Empty)?;
+        let _guard = open_clipboard(500).ok_or(Skip::Empty)?;
         if excluded_by_owner() {
             return Err(Skip::Private);
         }
@@ -260,8 +275,8 @@ pub fn write(payload: Payload) -> Result<()> {
         Payload::Png(png) => Some(png_to_bmp(png)?),
         _ => None,
     };
-    let _guard = Clipboard::new_attempts(20)
-        .map_err(|_| anyhow!("Le presse-papiers est occupé par une autre application."))?;
+    let _guard = open_clipboard(500)
+        .ok_or_else(|| anyhow!("Le presse-papiers est occupé par une autre application."))?;
     raw::empty().map_err(|e| anyhow!("{e}"))?;
     let res = match &payload {
         Payload::Text { text, rich } => {
@@ -287,7 +302,7 @@ pub fn write(payload: Payload) -> Result<()> {
 
 /// Current clipboard text, if any (for the `{presse-papiers}` snippet variable).
 pub fn read_text() -> Option<String> {
-    let _guard = Clipboard::new_attempts(10).ok()?;
+    let _guard = open_clipboard(300)?;
     let mut text = String::new();
     formats::Unicode.read_clipboard(&mut text).ok()?;
     Some(text)

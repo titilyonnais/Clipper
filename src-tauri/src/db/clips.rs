@@ -72,7 +72,8 @@ impl Db {
                 used_at = excluded.used_at,
                 use_count = use_count + 1,
                 source_app = COALESCE(excluded.source_app, source_app),
-                has_rich = MAX(has_rich, excluded.has_rich)
+                sensitive = MAX(sensitive, excluded.sensitive),
+                has_rich = CASE WHEN excluded.sensitive THEN 0 ELSE MAX(has_rich, excluded.has_rich) END
              RETURNING id",
             params![
                 clip.kind,
@@ -88,6 +89,11 @@ impl Db {
             ],
             |r| r.get(0),
         )?;
+        if clip.sensitive {
+            // A secret copied again (e.g. once detection was turned on) does
+            // not keep the formatted copies saved the first time.
+            tx.execute("DELETE FROM clip_formats WHERE clip_id = ?1", params![id])?;
+        }
         for (format, data) in [("html", &clip.rich.html), ("rtf", &clip.rich.rtf)] {
             if let Some(data) = data {
                 tx.execute(
@@ -364,17 +370,18 @@ impl Db {
         Ok(files.len())
     }
 
+    /// Still shown, or kept aside for an undo.
     fn image_in_use(&self, file: &str) -> Result<bool> {
-        Ok(self
-            .conn
-            .lock()
-            .query_row(
-                "SELECT 1 FROM clips WHERE kind = 'image' AND content = ?1 LIMIT 1",
-                params![file],
-                |_| Ok(()),
-            )
-            .optional()?
-            .is_some())
+        let c = self.conn.lock();
+        let mut sql = "SELECT 1 FROM clips WHERE kind = 'image' AND content = ?1".to_string();
+        if has_undo(&c)? {
+            sql += " UNION ALL SELECT 1 FROM undo_clips WHERE kind = 'image' AND content = ?1";
+        }
+        Ok(
+            c.query_row(&format!("{sql} LIMIT 1"), params![file], |_| Ok(()))
+                .optional()?
+                .is_some(),
+        )
     }
 
     /// Delete clips chosen by the user. They are kept aside (in temporary
@@ -541,6 +548,17 @@ impl Db {
                 count: r.get(1)?,
             })
         })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Every application clips came from: clips count and last use.
+    pub fn app_usage(&self) -> Result<Vec<(String, i64, String)>> {
+        let c = self.conn.lock();
+        let mut stmt = c.prepare_cached(
+            "SELECT source_app, COUNT(*), MAX(used_at) FROM clips
+             WHERE COALESCE(source_app, '') <> '' GROUP BY source_app",
+        )?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 

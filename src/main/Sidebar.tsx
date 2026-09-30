@@ -304,7 +304,15 @@ function NameInput({
     ref.current?.focus();
     ref.current?.select();
   }, []);
-  const done = () => (value.trim() ? onSubmit(value.trim()) : onCancel());
+  // Entrée or Échap settle it once: the blur that follows when the field
+  // goes away must neither submit again nor submit a cancelled name.
+  const settled = useRef(false);
+  const settle = (fn: () => void) => {
+    if (settled.current) return;
+    settled.current = true;
+    fn();
+  };
+  const done = () => settle(() => (value.trim() ? onSubmit(value.trim()) : onCancel()));
   return (
     <div className="flex h-8 animate-in items-center gap-2.5 rounded-ctl bg-muted px-2 ring-1 ring-foreground/25">
       <Folder className="size-4 shrink-0 text-subtle-foreground" />
@@ -324,7 +332,7 @@ function NameInput({
             done();
           } else if (e.key === "Escape") {
             e.preventDefault();
-            onCancel();
+            settle(onCancel);
           }
         }}
         className="min-w-0 flex-1 bg-transparent text-sm text-foreground placeholder:text-subtle-foreground"

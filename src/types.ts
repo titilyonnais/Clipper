@@ -155,3 +155,18 @@ export interface UpdateInfo {
   notes: string | null;
   date: string | null;
 }
+
+/** An application of this computer, for the ignore list. */
+export interface InstalledApp {
+  /** Executable file name, lowercase: what the ignore list holds. */
+  exe: string;
+  name: string;
+  path: string | null;
+  /** Why it is worth ignoring (password manager…), when it is. */
+  category: string | null;
+  score: number;
+  /** Clips in the history that came from it. */
+  copies: number;
+  last_used: string | null;
+  running: boolean;
+}

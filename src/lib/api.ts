@@ -9,6 +9,7 @@ import type {
   CopyFormat,
   FileInfo,
   ImportResult,
+  InstalledApp,
   ListParams,
   PasteOutcome,
   QueueStatus,
@@ -83,6 +84,9 @@ export const api = {
   backupNow: () => invoke<BackupInfo[]>("backup_now"),
   restoreBackup: (name: string) => invoke<void>("restore_backup", { name }),
   openDataFolder: () => invoke<void>("open_data_folder"),
+  installedApps: () => invoke<InstalledApp[]>("installed_apps"),
+  /** Choose an executable in the file explorer. */
+  pickApp: () => invoke<InstalledApp | null>("pick_app"),
 
   checkUpdate: () => invoke<UpdateInfo | null>("check_update"),
   /** Downloads, then closes Clipper for the installer, which restarts it. */

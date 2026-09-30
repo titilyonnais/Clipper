@@ -18,6 +18,7 @@ import { Menu, useMenu, type MenuEntry } from "@/ui/menu";
 import { AppIcon, Badge, EmptyState, Logo, Spinner } from "@/ui/misc";
 import { toast } from "@/ui/toast";
 import type { ClipItem, Collection } from "@/types";
+import { shortcutLabel } from "./ShortcutCapture";
 
 interface Props {
   clip: ClipItem | null;
@@ -56,8 +57,11 @@ export function PreviewPanel({ clip, collections, editing, setEditing, onDirty, 
       alive = false;
     };
   }, [id, version]);
+  const currentId = useRef(id);
+  currentId.current = id;
   useTauriEvent<number>("clip:ocr", (e) => {
-    if (e.payload === id) api.get(e.payload).then(setFull);
+    // Applied only if that clip is still the one shown.
+    if (e.payload === id) api.get(e.payload).then((c) => currentId.current === e.payload && setFull(c));
   });
 
   // Entering the editor starts from the current text.
@@ -73,7 +77,7 @@ export function PreviewPanel({ clip, collections, editing, setEditing, onDirty, 
       <section className="flex min-w-0 flex-1 flex-col" style={{ paddingTop: emptyOffset }} aria-label="Aperçu">
         <EmptyState icon={<Logo />} title="Aucun élément sélectionné">
           Copiez quelque chose, ou ouvrez le collage rapide avec{" "}
-          {settings?.shortcut_mode === "win_v" ? "Win+V" : settings?.shortcut || "votre raccourci"}.
+          {settings?.shortcut_mode === "win_v" ? "Win+V" : settings?.shortcut ? shortcutLabel(settings.shortcut) : "votre raccourci"}.
         </EmptyState>
       </section>
     );
@@ -301,10 +305,19 @@ export function PreviewPanel({ clip, collections, editing, setEditing, onDirty, 
 function TagsEditor({ clip }: { clip: ClipItem }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(clip.tags.join(", "));
+  // Entrée or Échap end the edit once; the blur that follows is ignored.
+  const settled = useRef(false);
   const save = () => {
+    if (settled.current) return;
+    settled.current = true;
     setEditing(false);
     const tags = value.split(",").map((t) => t.trim()).filter(Boolean);
     if (tags.join() !== clip.tags.join()) run(() => api.updateTags(clip.id, tags));
+  };
+  const cancel = () => {
+    settled.current = true;
+    setValue(clip.tags.join(", "));
+    setEditing(false);
   };
   if (editing) {
     return (
@@ -316,7 +329,7 @@ function TagsEditor({ clip }: { clip: ClipItem }) {
         onKeyDown={(e) => {
           e.stopPropagation();
           if (e.key === "Enter") save();
-          if (e.key === "Escape") setEditing(false);
+          if (e.key === "Escape") cancel();
         }}
         placeholder="tags séparés par des virgules"
         className="h-8 w-full max-w-sm text-13"
@@ -328,6 +341,7 @@ function TagsEditor({ clip }: { clip: ClipItem }) {
     <button
       type="button"
       onClick={() => {
+        settled.current = false;
         setValue(clip.tags.join(", "));
         setEditing(true);
       }}

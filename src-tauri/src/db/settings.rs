@@ -16,10 +16,42 @@ impl Db {
     }
 
     pub fn get_settings(&self) -> Result<Settings> {
-        Ok(self
-            .raw_settings()?
-            .and_then(|v| serde_json::from_value(v).ok())
-            .unwrap_or_default())
+        let Some(raw) = self.raw_settings()? else {
+            return Ok(Settings::default());
+        };
+        if let Ok(settings) = serde_json::from_value(raw.clone()) {
+            return Ok(settings);
+        }
+        // A value no longer valid (older or newer version): keep every
+        // other setting rather than starting again from the defaults.
+        let mut merged = serde_json::to_value(Settings::default())?;
+        if let Some(fields) = raw.as_object() {
+            for (key, value) in fields {
+                let mut candidate = merged.clone();
+                candidate[key] = value.clone();
+                if serde_json::from_value::<Settings>(candidate.clone()).is_ok() {
+                    merged = candidate;
+                } else {
+                    log::warn!("setting {key} ignored: invalid value");
+                }
+            }
+        }
+        Ok(serde_json::from_value(merged).unwrap_or_default())
+    }
+
+    /// Read, change and write the settings in one step: two commands
+    /// changing different settings at the same time keep both changes.
+    pub fn update_settings(&self, change: impl FnOnce(&mut Settings)) -> Result<Settings> {
+        let _guard = self.settings_lock.lock();
+        let mut settings = self.get_settings()?;
+        change(&mut settings);
+        self.set_settings(&settings)?;
+        Ok(settings)
+    }
+
+    /// Held while a command reads the settings, acts, then writes them.
+    pub fn settings_guard(&self) -> parking_lot::MutexGuard<'_, ()> {
+        self.settings_lock.lock()
     }
 
     pub fn set_settings(&self, s: &Settings) -> Result<()> {

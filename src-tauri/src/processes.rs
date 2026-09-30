@@ -86,3 +86,28 @@ pub fn webview_host(pid: u32, exe: &str) -> u32 {
     }
     pid
 }
+
+/// Processes showing a visible main window: applications people use, as
+/// opposed to background services.
+pub fn with_windows() -> std::collections::HashSet<u32> {
+    use windows_sys::Win32::Foundation::{HWND, LPARAM};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindow, GetWindowTextLengthW, GetWindowThreadProcessId, IsWindowVisible,
+        GW_OWNER,
+    };
+    unsafe extern "system" fn visit(hwnd: HWND, data: LPARAM) -> i32 {
+        let pids = &mut *(data as *mut std::collections::HashSet<u32>);
+        if IsWindowVisible(hwnd) != 0
+            && GetWindow(hwnd, GW_OWNER).is_null()
+            && GetWindowTextLengthW(hwnd) > 0
+        {
+            let mut pid = 0u32;
+            GetWindowThreadProcessId(hwnd, &mut pid);
+            pids.insert(pid);
+        }
+        1
+    }
+    let mut pids = std::collections::HashSet::new();
+    unsafe { EnumWindows(Some(visit), &mut pids as *mut _ as LPARAM) };
+    pids
+}

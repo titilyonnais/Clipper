@@ -42,6 +42,7 @@ export function usePanelWidth(key: string, initial: number, min: number, max: nu
  */
 export function Splitter({ panel, label }: { panel: PanelWidth; label: string }) {
   const [dragging, setDragging] = useState(false);
+  const held = useRef(false);
   const start = useRef({ x: 0, width: 0 });
   const frame = useRef(0);
 
@@ -67,6 +68,7 @@ export function Splitter({ panel, label }: { panel: PanelWidth; label: string })
         e.preventDefault();
         e.currentTarget.setPointerCapture(e.pointerId);
         start.current = { x: e.clientX, width: panel.width };
+        held.current = true;
         setDragging(true);
       }}
       onPointerMove={(e) => {
@@ -76,9 +78,20 @@ export function Splitter({ panel, label }: { panel: PanelWidth; label: string })
         frame.current = requestAnimationFrame(() => panel.set(start.current.width + x - start.current.x, false));
       }}
       onPointerUp={(e) => {
-        if (!dragging) return;
+        if (!held.current) return;
+        held.current = false;
         setDragging(false);
         panel.set(start.current.width + e.clientX - start.current.x);
+      }}
+      // Capture lost without a release (Alt+Tab, window hidden): keep the
+      // width reached and end the drag.
+      onLostPointerCapture={() => {
+        // Also sent right after a normal release, already handled above.
+        if (!held.current) return;
+        held.current = false;
+        cancelAnimationFrame(frame.current);
+        setDragging(false);
+        panel.set(panel.width);
       }}
       onDoubleClick={panel.reset}
       onKeyDown={(e) => {

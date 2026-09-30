@@ -7,7 +7,7 @@
 
 use parking_lot::Mutex;
 use serde::Serialize;
-use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, Ordering};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::{GlobalFree, HWND, LPARAM, LRESULT, WPARAM};
@@ -61,6 +61,10 @@ static NOTIFY: OnceLock<Box<dyn Fn(QueueStatus) + Send + Sync>> = OnceLock::new(
 /// few milliseconds of a clipboard change, a person pastes much later.
 static ANNOUNCED: Mutex<Option<Instant>> = Mutex::new(None);
 const HUMAN_DELAY: Duration = Duration::from_millis(250);
+/// Background reads of the same item in a row. A reader that reads every
+/// announcement (some sync tools) would otherwise keep the queue busy
+/// forever: past a few, announcements are spaced out.
+static BACKGROUND_READS: AtomicU32 = AtomicU32::new(0);
 
 pub fn status() -> QueueStatus {
     let s = STATE.lock();
@@ -129,6 +133,7 @@ pub fn start(items: Vec<String>) -> Result<(), String> {
     if items.is_empty() {
         return Err("Sélectionnez au moins un élément texte.".into());
     }
+    BACKGROUND_READS.store(0, Ordering::Relaxed);
     {
         let mut s = STATE.lock();
         s.items = items;
@@ -274,8 +279,20 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                     notify();
                 }
                 // Announce the next item (or the same one after a background read).
-                if active {
+                let reads = if pasted {
+                    BACKGROUND_READS.store(0, Ordering::Relaxed);
+                    0
+                } else {
+                    BACKGROUND_READS.fetch_add(1, Ordering::Relaxed) + 1
+                };
+                if active && reads <= 10 {
                     PostMessageW(hwnd, WM_TAKE, 0, 0);
+                } else if active {
+                    let window = hwnd as isize;
+                    std::thread::spawn(move || {
+                        std::thread::sleep(Duration::from_millis(200));
+                        PostMessageW(window as HWND, WM_TAKE, 0, 0);
+                    });
                 }
             }
             0

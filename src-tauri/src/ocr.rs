@@ -41,7 +41,8 @@ impl Ocr {
                     }
                 });
                 for id in rx {
-                    if !db.get_settings().map(|s| s.ocr_enabled).unwrap_or(true) {
+                    let settings = db.get_settings().unwrap_or_default();
+                    if !settings.ocr_enabled {
                         continue;
                     }
                     let Ok((kind, file)) = db.content(id) else {
@@ -55,13 +56,16 @@ impl Ocr {
                         .and_then(|png| recognize(&engine, &png).ok())
                         .unwrap_or_default();
                     // A capture showing a password or a key: masked like a
-                    // copied secret, and its text is never indexed.
-                    if crate::sensitive::detect(&text).is_some() {
+                    // copied secret, and its text is never indexed (unless
+                    // secrets are not masked at all).
+                    let secret =
+                        settings.detect_secrets && crate::sensitive::detect(&text).is_some();
+                    if secret {
                         let _ = db.set_sensitive(id, true);
                         text.clear();
                     }
                     // An empty result is stored too, so the image is not retried.
-                    if db.set_ocr_text(id, &text).is_ok() && !text.is_empty() {
+                    if db.set_ocr_text(id, &text).is_ok() && (!text.is_empty() || secret) {
                         on_done(id);
                     }
                     std::thread::sleep(std::time::Duration::from_millis(150));

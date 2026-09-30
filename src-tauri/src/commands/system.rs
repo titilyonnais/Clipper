@@ -2,11 +2,12 @@ use super::{changed, err, AppState, CmdResult};
 use crate::models::{BackupInfo, Settings, SettingsView};
 use crate::{backup, credentials, hotkey, tray, window};
 use std::time::Duration;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 
 /// Both windows keep a copy of the settings: tell them to reload it.
 fn settings_changed(app: &AppHandle) {
-    let _ = tauri::Emitter::emit(app, "settings:changed", ());
+    let _ = app.emit("settings:changed", ());
 }
 
 pub fn settings_view(state: &AppState, settings: Settings) -> SettingsView {
@@ -32,6 +33,7 @@ pub async fn set_settings(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> CmdResult<SettingsView> {
+    let _guard = state.db.settings_guard();
     let old = state.db.get_settings().map_err(err)?;
     settings.max_items = settings.max_items.max(0);
     settings.auto_delete_days = settings.auto_delete_days.max(0);
@@ -46,6 +48,8 @@ pub async fn set_settings(
     // Win+V is switched through its own command (it touches Explorer).
     settings.shortcut_mode = old.shortcut_mode.clone();
     settings.monitor_paused = old.monitor_paused;
+    // A save sent before the end of the welcome screen does not bring it back.
+    settings.onboarded |= old.onboarded;
 
     if settings.shortcut.trim() != old.shortcut.trim() && settings.shortcut_mode != "win_v" {
         if let Err(e) = crate::register_shortcut(&app, &settings) {
@@ -95,9 +99,10 @@ pub async fn enable_win_v(
     state: State<'_, AppState>,
 ) -> CmdResult<bool> {
     hotkey::set_explorer_win_v_disabled(true)?;
-    let mut settings = state.db.get_settings().map_err(err)?;
-    settings.shortcut_mode = "win_v".into();
-    state.db.set_settings(&settings).map_err(err)?;
+    let settings = state
+        .db
+        .update_settings(|s| s.shortcut_mode = "win_v".into())
+        .map_err(err)?;
     if restart_explorer {
         tauri::async_runtime::spawn_blocking(hotkey::restart_explorer)
             .await
@@ -125,9 +130,10 @@ pub async fn disable_win_v(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> CmdResult<()> {
-    let mut settings = state.db.get_settings().map_err(err)?;
-    settings.shortcut_mode = "custom".into();
-    state.db.set_settings(&settings).map_err(err)?;
+    let settings = state
+        .db
+        .update_settings(|s| s.shortcut_mode = "custom".into())
+        .map_err(err)?;
     let _ = crate::register_shortcut(&app, &settings);
     hotkey::set_explorer_win_v_disabled(false)?;
     if restart_explorer {
@@ -181,9 +187,10 @@ pub async fn complete_onboarding(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> CmdResult<SettingsView> {
-    let mut settings = state.db.get_settings().map_err(err)?;
-    settings.onboarded = true;
-    state.db.set_settings(&settings).map_err(err)?;
+    let settings = state
+        .db
+        .update_settings(|s| s.onboarded = true)
+        .map_err(err)?;
     settings_changed(&app);
     Ok(settings_view(&state, settings))
 }
@@ -207,7 +214,21 @@ pub async fn restore_backup(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> CmdResult<()> {
+    let current = state.db.get_settings().map_err(err)?;
     backup::restore(&state.db, &name)?;
+    // What belongs to this computer (shortcut registered with Windows,
+    // Win+V taken over, start-up entry, pause) stays as it is now.
+    state
+        .db
+        .update_settings(|restored| {
+            restored.shortcut = current.shortcut;
+            restored.shortcut_mode = current.shortcut_mode;
+            restored.launch_at_startup = current.launch_at_startup;
+            restored.monitor_paused = current.monitor_paused;
+            restored.onboarded = current.onboarded;
+        })
+        .map_err(err)?;
+    settings_changed(&app);
     changed(&app);
     Ok(())
 }
@@ -215,4 +236,73 @@ pub async fn restore_backup(
 #[tauri::command]
 pub async fn open_data_folder(state: State<'_, AppState>) -> CmdResult<()> {
     tauri_plugin_opener::open_path(state.db.data_dir(), None::<&str>).map_err(err)
+}
+
+/// The applications of this computer, to choose which ones to ignore. Their
+/// icons are extracted afterwards, in the background.
+#[tauri::command]
+pub async fn installed_apps(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> CmdResult<Vec<crate::installed::InstalledApp>> {
+    let usage = state.db.app_usage().map_err(err)?;
+    let apps = tauri::async_runtime::spawn_blocking(move || crate::installed::list(&usage))
+        .await
+        .map_err(err)?;
+    let paths: Vec<String> = apps.iter().filter_map(|a| a.path.clone()).collect();
+    spawn_icons(app, state.db.data_dir().join("icons"), paths);
+    Ok(apps)
+}
+
+/// Choose an executable in the file explorer.
+#[tauri::command]
+pub async fn pick_app(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> CmdResult<Option<crate::installed::InstalledApp>> {
+    let mut dialog = app
+        .dialog()
+        .file()
+        .set_title("Choisir une application à ignorer")
+        .add_filter("Applications", &["exe"]);
+    if let Some(dir) = std::env::var_os("ProgramFiles") {
+        dialog = dialog.set_directory(dir);
+    }
+    if let Some(main) = app.get_webview_window(window::MAIN) {
+        dialog = dialog.set_parent(&main);
+    }
+    let Some(path) = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_file())
+        .await
+        .map_err(err)?
+    else {
+        return Ok(None);
+    };
+    let path = path.into_path().map_err(err)?;
+    let found = crate::installed::describe(&path);
+    if let Some(found) = &found {
+        spawn_icons(
+            app,
+            state.db.data_dir().join("icons"),
+            found.path.clone().into_iter().collect(),
+        );
+    }
+    Ok(found)
+}
+
+fn spawn_icons(app: AppHandle, dir: std::path::PathBuf, paths: Vec<String>) {
+    std::thread::spawn(move || {
+        let mut fresh = 0;
+        for path in paths {
+            if crate::appicons::ensure_icon(&dir, &path) {
+                fresh += 1;
+                // Shown as they come, without re-rendering for each one.
+                if fresh % 12 == 0 {
+                    let _ = app.emit("icons:changed", ());
+                }
+            }
+        }
+        if fresh % 12 != 0 {
+            let _ = app.emit("icons:changed", ());
+        }
+    });
 }

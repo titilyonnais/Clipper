@@ -2,9 +2,10 @@
 
 use windows_sys::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
 use windows_sys::Win32::System::Registry::{
-    RegCloseKey, RegCreateKeyExW, RegDeleteValueW, RegGetValueW, RegQueryValueExW, RegSetValueExW,
-    HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WRITE, REG_BINARY, REG_DWORD,
-    REG_EXPAND_SZ, REG_OPTION_NON_VOLATILE, REG_SZ, REG_VALUE_TYPE, RRF_RT_REG_SZ,
+    RegCloseKey, RegCreateKeyExW, RegDeleteValueW, RegEnumKeyExW, RegGetValueW, RegOpenKeyExW,
+    RegQueryValueExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ,
+    KEY_WRITE, REG_BINARY, REG_DWORD, REG_EXPAND_SZ, REG_OPTION_NON_VOLATILE, REG_SZ,
+    REG_VALUE_TYPE, RRF_RT_DWORD, RRF_RT_REG_EXPAND_SZ, RRF_RT_REG_SZ,
 };
 
 fn wide(s: &str) -> Vec<u16> {
@@ -14,46 +15,100 @@ fn wide(s: &str) -> Vec<u16> {
 /// A text value read from the current user's hive, else the machine's,
 /// without creating anything. `name` empty: the key's default value.
 pub fn read_any_hive(path: &str, name: &str) -> Option<String> {
+    [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE]
+        .into_iter()
+        .find_map(|hive| read_string(hive, path, name))
+}
+
+/// A text value (environment variables expanded), without creating
+/// anything. `name` empty: the key's default value.
+pub fn read_string(hive: HKEY, path: &str, name: &str) -> Option<String> {
     let path = wide(path);
     let name = (!name.is_empty()).then(|| wide(name));
     let name_ptr = name.as_ref().map_or(std::ptr::null(), |n| n.as_ptr());
-    [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE]
-        .into_iter()
-        .find_map(|hive| {
-            let mut size = 0u32;
-            let status = unsafe {
-                RegGetValueW(
-                    hive,
-                    path.as_ptr(),
-                    name_ptr,
-                    RRF_RT_REG_SZ,
-                    std::ptr::null_mut(),
-                    std::ptr::null_mut(),
-                    &mut size,
-                )
-            };
-            if status != ERROR_SUCCESS || size == 0 {
-                return None;
-            }
-            let mut buf = vec![0u16; (size as usize).div_ceil(2)];
-            let status = unsafe {
-                RegGetValueW(
-                    hive,
-                    path.as_ptr(),
-                    name_ptr,
-                    RRF_RT_REG_SZ,
-                    std::ptr::null_mut(),
-                    buf.as_mut_ptr().cast(),
-                    &mut size,
-                )
-            };
-            (status == ERROR_SUCCESS).then(|| {
-                buf.truncate(size as usize / 2);
-                String::from_utf16_lossy(&buf)
-                    .trim_end_matches('\0')
-                    .to_string()
-            })
-        })
+    let flags = RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ;
+    let mut size = 0u32;
+    let status = unsafe {
+        RegGetValueW(
+            hive,
+            path.as_ptr(),
+            name_ptr,
+            flags,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut size,
+        )
+    };
+    if status != ERROR_SUCCESS || size == 0 {
+        return None;
+    }
+    let mut buf = vec![0u16; (size as usize).div_ceil(2)];
+    let status = unsafe {
+        RegGetValueW(
+            hive,
+            path.as_ptr(),
+            name_ptr,
+            flags,
+            std::ptr::null_mut(),
+            buf.as_mut_ptr().cast(),
+            &mut size,
+        )
+    };
+    (status == ERROR_SUCCESS).then(|| {
+        buf.truncate(size as usize / 2);
+        String::from_utf16_lossy(&buf)
+            .trim_end_matches('\0')
+            .to_string()
+    })
+}
+
+pub fn read_dword(hive: HKEY, path: &str, name: &str) -> Option<u32> {
+    let (path, name) = (wide(path), wide(name));
+    let mut value = 0u32;
+    let mut size = 4u32;
+    let status = unsafe {
+        RegGetValueW(
+            hive,
+            path.as_ptr(),
+            name.as_ptr(),
+            RRF_RT_DWORD,
+            std::ptr::null_mut(),
+            (&mut value as *mut u32).cast(),
+            &mut size,
+        )
+    };
+    (status == ERROR_SUCCESS).then_some(value)
+}
+
+/// Names of the subkeys of a key; empty when it cannot be opened.
+pub fn subkeys(hive: HKEY, path: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut key: HKEY = std::ptr::null_mut();
+    if unsafe { RegOpenKeyExW(hive, wide(path).as_ptr(), 0, KEY_READ, &mut key) } != ERROR_SUCCESS {
+        return out;
+    }
+    let mut buf = [0u16; 256];
+    for index in 0.. {
+        let mut len = buf.len() as u32;
+        let status = unsafe {
+            RegEnumKeyExW(
+                key,
+                index,
+                buf.as_mut_ptr(),
+                &mut len,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        if status != ERROR_SUCCESS {
+            break;
+        }
+        out.push(String::from_utf16_lossy(&buf[..len as usize]));
+    }
+    unsafe { RegCloseKey(key) };
+    out
 }
 
 /// An open key of `HKEY_CURRENT_USER`, created if missing.

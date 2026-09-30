@@ -7,16 +7,18 @@ import { cn, fullDate, humanBytes, plural } from "@/lib/utils";
 import { run } from "@/clip/actions";
 import { Button } from "@/ui/button";
 import { Dialog } from "@/ui/dialog";
-import { Field, Input, Row, Segmented, Switch, Textarea, useSlidingThumb } from "@/ui/form";
+import { Field, Input, Row, Segmented, Switch, useSlidingThumb } from "@/ui/form";
 import { Badge, Kbd, Logo } from "@/ui/misc";
 import { toast } from "@/ui/toast";
 import { ShortcutCapture } from "./ShortcutCapture";
 import { KeymapSettings, ResetKeymap } from "./KeymapSettings";
+import { IgnoredApps } from "./IgnoredApps";
+import { Docs, loadChangelog, loadGuide } from "./Docs";
 import type { AiProvider, BackupInfo, Settings, Stats } from "@/types";
 
 declare const __APP_VERSION__: string;
 
-type Tab = "shortcut" | "keys" | "capture" | "storage" | "ai" | "appearance" | "about";
+type Tab = "shortcut" | "keys" | "capture" | "storage" | "ai" | "appearance" | "guide" | "about";
 const TABS: [Tab, string][] = [
   ["shortcut", "Collage rapide"],
   ["keys", "Raccourcis clavier"],
@@ -24,6 +26,7 @@ const TABS: [Tab, string][] = [
   ["storage", "Stockage"],
   ["ai", "Intelligence artificielle"],
   ["appearance", "Apparence"],
+  ["guide", "Guide"],
   ["about", "À propos"],
 ];
 
@@ -70,6 +73,7 @@ export function SettingsView({ stats }: { stats: Stats | null }) {
           {tab === "storage" && <StorageSection stats={stats} />}
           {tab === "ai" && <AiSection />}
           {tab === "appearance" && <AppearanceSection />}
+          {tab === "guide" && <Docs load={loadGuide} label="Guide" />}
           {tab === "about" && <AboutSection />}
         </div>
       </div>
@@ -240,7 +244,6 @@ export function ShortcutHelp() {
 function CaptureSection() {
   const { settings } = useSettings();
   const save = useSave();
-  const [apps, setApps] = useState(settings?.ignore_apps.join("\n") ?? "");
   if (!settings) return null;
   const paused = settings.paused_until;
   return (
@@ -284,20 +287,7 @@ function CaptureSection() {
           <Switch label="OCR" checked={settings.ocr_enabled} onChange={(v) => save({ ocr_enabled: v })} />
         </Row>
       </Group>
-      <Group title="Applications ignorées">
-        <Field
-          label="Rien de ce qui est copié depuis ces applications n'est enregistré"
-          hint="Un nom d'exécutable par ligne (ex. keepassxc.exe). Les gestionnaires de mots de passe qui le signalent sont ignorés automatiquement."
-        >
-          <Textarea
-            rows={5}
-            value={apps}
-            onChange={(e) => setApps(e.target.value)}
-            onBlur={() => save({ ignore_apps: apps.split("\n").map((a) => a.trim()).filter(Boolean) })}
-            className="font-mono text-13"
-          />
-        </Field>
-      </Group>
+      <IgnoredApps />
     </>
   );
 }
@@ -308,6 +298,7 @@ function StorageSection({ stats }: { stats: Stats | null }) {
   const [max, setMax] = useState(String(settings?.max_items ?? 0));
   const [backups, setBackups] = useState<BackupInfo[]>([]);
   const [confirm, setConfirm] = useState<"clear" | BackupInfo | null>(null);
+  const [limit, setLimit] = useState<number | null>(null);
   useEffect(() => {
     api.backups().then(setBackups);
   }, []);
@@ -337,7 +328,14 @@ function StorageSection({ stats }: { stats: Stats | null }) {
             step={500}
             value={max}
             onChange={(e) => setMax(e.target.value)}
-            onBlur={() => save({ max_items: Math.max(0, parseInt(max) || 0) })}
+            onBlur={() => {
+              const next = Math.max(0, parseInt(max) || 0);
+              if (next === settings.max_items) return setMax(String(next));
+              // A lower limit deletes at once: ask first when it would.
+              const lower = next > 0 && (settings.max_items === 0 || next < settings.max_items);
+              if (lower && stats && stats.total > next) setLimit(next);
+              else save({ max_items: next });
+            }}
             className="w-28 text-right tabular"
           />
         </Row>
@@ -412,6 +410,37 @@ function StorageSection({ stats }: { stats: Stats | null }) {
         </Row>
       </Group>
 
+      {limit !== null && (
+        <Dialog
+          title={`Garder ${plural(limit, "élément")} au plus ?`}
+          description={`L'historique en compte ${stats?.total.toLocaleString("fr-FR")}. Les plus anciens seront supprimés définitivement, sauf ceux épinglés ou rangés dans une collection.`}
+          onClose={() => {
+            setLimit(null);
+            setMax(String(settings.max_items));
+          }}
+          footer={
+            <>
+              <Button
+                onClick={() => {
+                  setLimit(null);
+                  setMax(String(settings.max_items));
+                }}
+              >
+                Annuler
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => {
+                  save({ max_items: limit });
+                  setLimit(null);
+                }}
+              >
+                Supprimer les plus anciens
+              </Button>
+            </>
+          }
+        />
+      )}
       {confirm === "clear" && (
         <Dialog
           title="Effacer l'historique ?"
@@ -463,7 +492,7 @@ function StorageSection({ stats }: { stats: Stats | null }) {
 }
 
 const MODELS: Record<Exclude<AiProvider, "ollama">, string[]> = {
-  anthropic: ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"],
+  anthropic: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5"],
   openai: ["gpt-5", "gpt-5-mini"],
 };
 
@@ -478,7 +507,12 @@ function AiSection() {
       value={value(k)}
       placeholder={placeholder}
       onChange={(e) => setDraft({ ...draft, [k]: e.target.value })}
-      onBlur={() => draft[k] !== undefined && draft[k] !== settings[k] && save({ [k]: draft[k] })}
+      onBlur={() => {
+        if (draft[k] === undefined) return;
+        if (draft[k] !== settings[k]) save({ [k]: draft[k] });
+        // Saved (or unchanged): the field shows the setting again.
+        setDraft(({ [k]: _, ...rest }) => rest);
+      }}
       className="font-mono text-13"
     />
   );
@@ -523,7 +557,11 @@ function AiSection() {
                     key={m}
                     size="xs"
                     variant={value(provider === "anthropic" ? "anthropic_model" : "openai_model") === m ? "primary" : "outline"}
-                    onClick={() => save(provider === "anthropic" ? { anthropic_model: m } : { openai_model: m })}
+                    onClick={() => {
+                      const k = provider === "anthropic" ? "anthropic_model" : "openai_model";
+                      setDraft(({ [k]: _, ...rest }) => rest);
+                      save({ [k]: m });
+                    }}
                   >
                     <span className="font-mono">{m}</span>
                   </Button>
@@ -663,6 +701,15 @@ function AboutSection() {
           </p>
         ))}
       </Group>
+      <section>
+        <h2 className="mb-1 text-sm text-muted-foreground">Notes de version</h2>
+        <Docs
+          load={loadChangelog}
+          open={[__APP_VERSION__]}
+          label="Notes de version"
+          trailing={(v) => (v === __APP_VERSION__ ? "installée" : null)}
+        />
+      </section>
       <p className="text-13 text-subtle-foreground">
         Code source : github.com/titilyonnais/Clipper · Données : <span className="font-mono">{settings.data_dir}</span>
       </p>
