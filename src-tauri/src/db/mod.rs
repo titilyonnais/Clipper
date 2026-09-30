@@ -240,8 +240,7 @@ impl Db {
     /// Write PNG bytes to the images directory (content-addressed) and
     /// return the file name.
     pub fn store_image_file(&self, png: &[u8]) -> Result<String> {
-        use sha2::{Digest, Sha256};
-        let name = format!("{:x}.png", Sha256::digest(png));
+        let name = format!("{}.png", crate::clipboard::sha256_hex(png));
         let path = self.images_dir.join(&name);
         if !path.exists() {
             std::fs::write(&path, png)?;
