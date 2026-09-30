@@ -27,7 +27,7 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 # native-tls = SChannel on Windows: no bundled crypto library, smaller binary.
 reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
-sha2 = "0.10"
+sha2 = "0.11"
 anyhow = "1"
 parking_lot = "0.12"
 log = { version = "0.4", features = ["std"] }
