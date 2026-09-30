@@ -493,7 +493,7 @@ name = "clipper"
 version = "3.4.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
+ "base64 0.23.1",
  "chrono",
  "clipboard-win",
  "crc32fast",

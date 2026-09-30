@@ -31,7 +31,7 @@ sha2 = "0.10"
 anyhow = "1"
 parking_lot = "0.12"
 log = { version = "0.4", features = ["std"] }
-base64 = "0.22"
+base64 = "0.23"
 crc32fast = "1"
 flate2 = "1"
 image = { version = "0.25", default-features = false, features = ["png", "bmp"] }
