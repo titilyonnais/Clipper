@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/ui/button";
 import { Switch } from "@/ui/form";
 import { Kbd, Logo, Spinner } from "@/ui/misc";
+import { shortcutLabel } from "./ShortcutCapture";
 
 /** Three short steps on first launch: shortcut, paste behaviour, start-up. */
 export function Onboarding({ onDone }: { onDone: () => void }) {
@@ -51,7 +52,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       footer={
         <>
           <Button variant="ghost" onClick={() => setStep(1)}>
-            Garder {settings.shortcut || "mon raccourci"}
+            Garder {settings.shortcut ? shortcutLabel(settings.shortcut) : "mon raccourci"}
           </Button>
           <Button variant="primary" size="lg" disabled={busy} onClick={enableWinV}>
             {busy ? <Spinner className="border-brand-foreground/30 border-t-brand-foreground" /> : null} Utiliser Win+V

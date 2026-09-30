@@ -12,9 +12,21 @@ export function useSelection(clips: ClipItem[]) {
   const anchor = useRef<number | null>(null);
   const ids = clips.map((c) => c.id);
   const key = ids.join(",");
+  const previous = useRef<number[]>([]);
 
   useEffect(() => {
-    setActive((a) => (a !== null && ids.includes(a) ? a : (ids[0] ?? null)));
+    // The active row gone (deleted, merged): the one that took its place,
+    // so a second Suppr removes the next item, not the newest.
+    setActive((a) => {
+      if (a !== null && ids.includes(a)) return a;
+      const at = a === null ? -1 : previous.current.indexOf(a);
+      // Only for removals: a new list (another search) starts at the top.
+      const removal = ids.every((id) => previous.current.includes(id));
+      if (at < 0 || !removal) return ids[0] ?? null;
+      const next = previous.current.slice(at + 1).find((id) => ids.includes(id));
+      return next ?? ids[ids.length - 1] ?? null;
+    });
+    previous.current = ids;
     setMarked((m) => {
       const kept = new Set([...m].filter((id) => ids.includes(id)));
       return kept.size === m.size ? m : kept;

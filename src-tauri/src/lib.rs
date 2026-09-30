@@ -11,6 +11,7 @@ mod credentials;
 mod db;
 mod files;
 mod hotkey;
+mod installed;
 mod models;
 mod ocr;
 mod pack;
@@ -94,6 +95,8 @@ pub fn run() {
             commands::system::show_popup,
             commands::system::hide_popup,
             commands::system::show_main,
+            commands::system::installed_apps,
+            commands::system::pick_app,
             commands::system::hide_main,
             commands::system::complete_onboarding,
             commands::system::list_backups,
@@ -179,6 +182,8 @@ fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.clone();
     let ocr = ocr::Ocr::start(db.clone(), move |id| {
         let _ = handle.emit("clip:ocr", id);
+        // The list too: the image may now be masked as sensitive.
+        let _ = handle.emit("clips:changed", ());
     });
 
     let handle = app.clone();

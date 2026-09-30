@@ -20,25 +20,29 @@ export function Dialog({
   className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
 
+  // Focus once, on opening: a marked control, else the first field, else
+  // the dialog itself (never the close button, nor a destructive action).
   useEffect(() => {
     const el = ref.current;
-    (el?.querySelector<HTMLElement>("[autofocus], input, textarea, button") ?? el)?.focus();
+    (el?.querySelector<HTMLElement>("[data-autofocus]") ?? el?.querySelector<HTMLElement>("input, textarea") ?? el)?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        onClose();
+        close.current();
       }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [onClose]);
+  }, []);
 
   return createPortal(
     <div
       className="fixed inset-0 z-40 flex animate-in items-center justify-center bg-black/65 p-6 [.light_&]:bg-black/25"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+      onMouseDown={(e) => e.target === e.currentTarget && close.current()}
     >
       <div
         ref={ref}

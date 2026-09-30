@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Copy, EyeOff, ListOrdered, Minus, PanelLeftClose, PanelLeftOpen, Square, X } from "lucide-react";
 import { api } from "@/lib/api";
@@ -16,18 +16,29 @@ export function TitleBar({ sidebarFolded, onToggleSidebar }: { sidebarFolded: bo
   const keymap = useKeymap();
   const [maximized, setMaximized] = useState(false);
   const [queue, setQueue] = useState<QueueStatus | null>(null);
-  const w = getCurrentWindow();
+  // One object for the component's life: a new one each render would
+  // subscribe again every time.
+  const [w] = useState(getCurrentWindow);
 
   useEffect(() => {
     const sync = () => w.isMaximized().then(setMaximized).catch(() => {});
     sync();
     const un = w.onResized(sync);
-    api.queueStatus().then(setQueue);
     return () => {
       un.then((f) => f());
     };
   }, [w]);
-  useTauriEvent<QueueStatus>("queue:changed", (e) => setQueue(e.payload));
+  // The current state once, then its changes (a late answer never
+  // overwrites a newer event).
+  const queueEvents = useRef(0);
+  useEffect(() => {
+    const at = queueEvents.current;
+    api.queueStatus().then((q) => queueEvents.current === at && setQueue(q));
+  }, []);
+  useTauriEvent<QueueStatus>("queue:changed", (e) => {
+    queueEvents.current++;
+    setQueue(e.payload);
+  });
 
   const paused = settings?.paused_until;
   const pausedLabel =

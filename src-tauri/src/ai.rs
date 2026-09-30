@@ -283,9 +283,12 @@ async fn anthropic(s: &Settings, system: &str, content: &str) -> Result<String, 
         .post("https://api.anthropic.com/v1/messages")
         .header("x-api-key", key)
         .header("anthropic-version", ANTHROPIC_VERSION);
-    // Opus 5 / Fable: if a safety classifier declines, let the API retry on
-    // its recommended fallback model instead of failing.
-    if model.starts_with("claude-opus-5") || model.starts_with("claude-fable") {
+    // Opus 5, Sonnet 5.5, Fable: if a safety classifier declines, let the
+    // API retry on its recommended fallback model instead of failing.
+    if model.starts_with("claude-opus-5")
+        || model.starts_with("claude-sonnet-5-5")
+        || model.starts_with("claude-fable")
+    {
         body["fallbacks"] = json!("default");
         req = req.header("anthropic-beta", FALLBACK_BETA);
     }

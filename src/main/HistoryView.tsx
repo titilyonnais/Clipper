@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { CalendarDays, Clock, Code2, File, Image, Link2, ListOrdered, Pin, Search, Trash2, Type, X } from "lucide-react";
 import { api } from "@/lib/api";
-import { useClipList, useDebounced } from "@/lib/hooks";
+import { useClipList, useDebounced, useTauriEvent } from "@/lib/hooks";
 import { useSettings } from "@/lib/settings";
 import { actionFor, comboKeys, comboLabel, isTextField, overlayOpen, useKeymap } from "@/lib/shortcuts";
 import { appLabel, cn, plural } from "@/lib/utils";
@@ -101,7 +101,9 @@ export const HistoryView = forwardRef<HistoryHandle, Props>(function HistoryView
     }),
     [q, kind, range, view],
   );
-  const { clips, hasMore, loaded, loadMore } = useClipList(params);
+  const { clips, hasMore, loaded, loadMore, reorder } = useClipList(params, true);
+  // The real order again each time the window comes back.
+  useTauriEvent("window:shown", reorder);
   const sel = useSelection(clips);
   const active = clips.find((c) => c.id === sel.active) ?? null;
   useEffect(() => setEditing(false), [sel.active]);

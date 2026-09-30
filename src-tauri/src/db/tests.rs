@@ -503,3 +503,97 @@ fn time_ranges() {
     assert!(time_range_bounds("demain").is_none());
     assert!(time_range_bounds("2026-13-01..2026-01-01").is_none());
 }
+
+#[test]
+fn one_invalid_setting_keeps_the_others() {
+    let (db, dir) = temp_db();
+    let mut settings = db.get_settings().unwrap();
+    settings.max_items = 4321;
+    settings.ignore_apps = vec!["secret.exe".into()];
+    db.set_settings(&settings).unwrap();
+    // A value of the wrong type, as a newer or older version could write.
+    let mut raw: serde_json::Value = serde_json::to_value(&settings).unwrap();
+    raw["theme"] = serde_json::json!(42);
+    db.conn
+        .lock()
+        .execute(
+            "UPDATE settings SET value = ?1 WHERE key = 'app'",
+            rusqlite::params![raw.to_string()],
+        )
+        .unwrap();
+    let read = db.get_settings().unwrap();
+    assert_eq!(read.max_items, 4321);
+    assert_eq!(read.ignore_apps, vec!["secret.exe".to_string()]);
+    assert_eq!(read.theme, crate::models::Settings::default().theme);
+    drop(db);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn settings_updates_keep_each_other() {
+    let (db, dir) = temp_db();
+    let db = std::sync::Arc::new(db);
+    let threads: Vec<_> = (0..8)
+        .map(|i| {
+            let db = db.clone();
+            std::thread::spawn(move || {
+                db.update_settings(|s| s.ignore_apps.push(format!("app{i}.exe")))
+                    .unwrap();
+            })
+        })
+        .collect();
+    for t in threads {
+        t.join().unwrap();
+    }
+    let apps = db.get_settings().unwrap().ignore_apps;
+    for i in 0..8 {
+        assert!(apps.contains(&format!("app{i}.exe")), "{apps:?}");
+    }
+    drop(db);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn secret_copied_again_becomes_sensitive() {
+    let (db, dir) = temp_db();
+    let rich = RichFormats {
+        html: Some(b"<b>hunter2</b>".to_vec()),
+        rtf: None,
+    };
+    // Copied while detection was off, then again once it is on.
+    let id = add(&db, "hunter2", false, &rich);
+    assert_eq!(add(&db, "hunter2", true, &RichFormats::default()), id);
+    let clip = db.get(id).unwrap().unwrap();
+    assert!(clip.sensitive && !clip.has_rich);
+    assert!(db.rich_formats(id).unwrap().html.is_none());
+    std::fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn undoable_image_survives_cleanup() {
+    let (db, dir) = temp_db();
+    let file = db.store_image_file(b"not really a png").unwrap();
+    let image = || {
+        db.upsert_clip(&NewClip {
+            kind: "image",
+            content: &file,
+            preview: "img",
+            language: None,
+            source_app: None,
+            size_bytes: 16,
+            hash: "i:1",
+            sensitive: false,
+            rich: &RichFormats::default(),
+        })
+        .unwrap()
+    };
+    let first = image();
+    db.delete(&[first]).unwrap();
+    // Copied again, then cleared, while the deletion can still be undone.
+    image();
+    db.clear_history().unwrap();
+    assert!(db.image_path(&file).exists(), "kept for the undo");
+    assert_eq!(db.undo_delete().unwrap(), 1);
+    assert!(db.image_path(&file).exists());
+    std::fs::remove_dir_all(dir).ok();
+}

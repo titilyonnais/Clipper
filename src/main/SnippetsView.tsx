@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { Copy, Plus, Scissors, Search, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useDebounced, useTauriEvent } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { run } from "@/clip/actions";
 import { Button } from "@/ui/button";
+import { Dialog } from "@/ui/dialog";
 import { Input, Textarea } from "@/ui/form";
 import { EmptyState, Kbd } from "@/ui/misc";
 import { Splitter, type PanelWidth } from "@/ui/splitter";
@@ -28,7 +29,15 @@ export function useSnippets(query = "") {
   return snippets;
 }
 
-export function SnippetsView({ listPanel }: { listPanel: PanelWidth }) {
+export interface SnippetsHandle {
+  /** Run `fn` now, or once unsaved changes are saved or discarded. */
+  guard: (fn: () => void) => void;
+}
+
+export const SnippetsView = forwardRef<SnippetsHandle, { listPanel: PanelWidth }>(function SnippetsView(
+  { listPanel },
+  ref,
+) {
   const [query, setQuery] = useState("");
   const q = useDebounced(query.trim(), 100);
   const snippets = useSnippets(q);
@@ -53,11 +62,24 @@ export function SnippetsView({ listPanel }: { listPanel: PanelWidth }) {
       draft.content !== current.content);
 
   const save = () =>
-    draft &&
-    run(async () => {
-      const id = await api.saveSnippet({ ...draft, abbreviation: draft.abbreviation?.trim() || null });
-      setSelected(id);
-    }, "Snippet enregistré.");
+    draft
+      ? run(async () => {
+          const id = await api.saveSnippet({ ...draft, abbreviation: draft.abbreviation?.trim() || null });
+          // A second save updates this snippet instead of creating another.
+          setDraft((d) => (d ? { ...d, id } : d));
+          setSelected(id);
+          return true;
+        }, "Snippet enregistré.")
+      : Promise.resolve(undefined);
+
+  const [leaving, setLeaving] = useState<(() => void) | null>(null);
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const guard = useCallback((fn: () => void) => {
+    if (dirtyRef.current) setLeaving(() => fn);
+    else fn();
+  }, []);
+  useImperativeHandle(ref, () => ({ guard }), [guard]);
 
   const insertVariable = (v: string) => {
     const el = contentRef.current;
@@ -82,10 +104,12 @@ export function SnippetsView({ listPanel }: { listPanel: PanelWidth }) {
           <Button
             size="lg"
             variant="primary"
-            onClick={() => {
-              setSelected(null);
-              setDraft({ ...EMPTY });
-            }}
+            onClick={() =>
+              guard(() => {
+                setSelected(null);
+                setDraft({ ...EMPTY });
+              })
+            }
           >
             <Plus /> Nouveau
           </Button>
@@ -97,7 +121,7 @@ export function SnippetsView({ listPanel }: { listPanel: PanelWidth }) {
               type="button"
               role="option"
               aria-selected={s.id === selected}
-              onClick={() => setSelected(s.id)}
+              onClick={() => s.id !== selected && guard(() => setSelected(s.id))}
               className={cn(
                 "flex w-full flex-col gap-1 rounded-ctl px-3 py-2.5 text-left transition-colors duration-150",
                 s.id === selected ? "bg-selected" : "hover:bg-muted/60",
@@ -205,6 +229,40 @@ export function SnippetsView({ listPanel }: { listPanel: PanelWidth }) {
           <EmptyState icon={<Scissors />} title="Aucun snippet sélectionné" />
         )}
       </section>
+      {leaving && (
+        <Dialog
+          title="Enregistrer les modifications ?"
+          description="Ce snippet a été modifié et n'est pas encore enregistré."
+          onClose={() => setLeaving(null)}
+          footer={
+            <>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  const next = leaving;
+                  setLeaving(null);
+                  setDraft(null);
+                  next();
+                }}
+              >
+                Abandonner
+              </Button>
+              <Button onClick={() => setLeaving(null)}>Continuer à modifier</Button>
+              <Button
+                variant="primary"
+                data-autofocus
+                onClick={async () => {
+                  const next = leaving;
+                  setLeaving(null);
+                  if (await save()) next();
+                }}
+              >
+                Enregistrer
+              </Button>
+            </>
+          }
+        />
+      )}
     </div>
   );
-}
+});

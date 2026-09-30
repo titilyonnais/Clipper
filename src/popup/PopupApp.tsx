@@ -36,6 +36,8 @@ export function PopupApp() {
   const [phase, setPhase] = useState<"open" | "closing" | "hidden">("open");
   // Incremented at each appearance: a hide requested before it is dropped.
   const shown = useRef(0);
+  // Each opening starts again from the newest item.
+  const [session, setSession] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
   const q = useDebounced(query.trim(), 60);
   // The search field is in the header, outside the panes: keys are routed
@@ -58,6 +60,7 @@ export function PopupApp() {
   useTauriEvent("popup:dismiss", hide);
   useTauriEvent<string | null>("popup:shown", (e) => {
     shown.current++;
+    setSession((n) => n + 1);
     setTarget(e.payload);
     setTab("history");
     setQuery("");
@@ -176,6 +179,7 @@ export function PopupApp() {
           dataDir={settings?.data_dir}
           clearQuery={() => setQuery("")}
           keys={keys}
+          session={session}
         />
       )}
 
@@ -270,6 +274,7 @@ function HistoryPane({
   dataDir,
   clearQuery,
   keys,
+  session,
 }: {
   params: ListParams;
   rawQuery: string;
@@ -280,9 +285,16 @@ function HistoryPane({
   dataDir?: string;
   clearQuery: () => void;
   keys: KeysRef;
+  session: number;
 }) {
   const { clips, hasMore, loadMore, loaded } = useClipList(params);
   const sel = useSelection(clips);
+  // A new opening selects the newest item (and scrolls back to it), not the
+  // one pasted or browsed last time.
+  useEffect(() => {
+    sel.first();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
   const active = clips.find((c) => c.id === sel.active) ?? null;
   const [full, setFull] = useState<ClipItem | null>(null);
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -339,10 +351,11 @@ function HistoryPane({
       if (snippet && preferSnippet) paste(() => api.pasteSnippet(snippet.id, e.shiftKey));
       else if (sel.marked.size > 1) run(() => api.startQueue(sel.selected.filter(isText).map((c) => c.id)));
       else if (active) pasteClip(active.id, e.shiftKey);
-    } else if (e.ctrlKey && /^[1-9]$/.test(k)) {
+    } else if (e.ctrlKey && /^(Digit|Numpad)[1-9]$/.test(e.code)) {
+      // The physical key: on AZERTY, Ctrl+1 gives "&" as `key`.
       e.preventDefault();
-      const clip = clips[Number(k) - 1];
-      if (clip) pasteClip(clip.id, false, false);
+      const clip = clips[Number(e.code.slice(-1)) - 1];
+      if (clip) pasteClip(clip.id, false, e.shiftKey);
     } else if (e.ctrlKey && k.toLowerCase() === "e" && active && isText(active) && !active.sensitive) {
       e.preventDefault();
       setEditing(true);

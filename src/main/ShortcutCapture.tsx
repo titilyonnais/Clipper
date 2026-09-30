@@ -10,8 +10,51 @@ function keyName(code: string): string | null {
   if (/^Key[A-Z]$/.test(code)) return code.slice(3);
   if (/^Digit\d$/.test(code)) return code.slice(5);
   if (/^F\d{1,2}$/.test(code)) return code;
-  const named = ["Space", "Enter", "Tab", "Backquote", "Insert", "Home", "End", "PageUp", "PageDown"];
+  const named = [
+    "Space",
+    "Enter",
+    "Tab",
+    "Insert",
+    "Home",
+    "End",
+    "PageUp",
+    "PageDown",
+    // Punctuation keys: on AZERTY, M is the "Semicolon" key.
+    "Backquote",
+    "Minus",
+    "Equal",
+    "BracketLeft",
+    "BracketRight",
+    "Backslash",
+    "Semicolon",
+    "Quote",
+    "Comma",
+    "Period",
+    "Slash",
+  ];
   return named.includes(code) ? code : null;
+}
+
+type LayoutMap = { get(code: string): string | undefined };
+let layout: LayoutMap | null = null;
+// What each physical key prints on this keyboard (AZERTY, QWERTZ…).
+(navigator as Navigator & { keyboard?: { getLayoutMap(): Promise<LayoutMap> } }).keyboard
+  ?.getLayoutMap()
+  .then((map) => (layout = map))
+  .catch(() => {});
+
+/** "Ctrl+Shift+Q" (physical keys) as printed on this keyboard: "Ctrl+Maj+A". */
+export function shortcutLabel(combo: string): string {
+  return combo
+    .split("+")
+    .map((part) => {
+      if (part === "Shift") return "Maj";
+      if (part === "Super") return "Win";
+      const code = /^[A-Z]$/.test(part) ? `Key${part}` : /^\d$/.test(part) ? null : part;
+      const printed = code ? layout?.get(code) : undefined;
+      return printed && printed.trim() ? printed.toUpperCase() : part;
+    })
+    .join("+");
 }
 
 export function ShortcutCapture({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -46,7 +89,13 @@ export function ShortcutCapture({ value, onChange }: { value: string; onChange: 
         )}
       >
         <Keyboard className="size-4 text-muted-foreground" />
-        {recording ? <span className="text-muted-foreground">Appuyez sur la combinaison…</span> : value || <span className="text-subtle-foreground">Aucun</span>}
+        {recording ? (
+          <span className="text-muted-foreground">Appuyez sur la combinaison…</span>
+        ) : value ? (
+          shortcutLabel(value)
+        ) : (
+          <span className="text-subtle-foreground">Aucun</span>
+        )}
       </button>
       {value && !recording && (
         <Button size="sm" variant="ghost" onClick={() => onChange("")}>

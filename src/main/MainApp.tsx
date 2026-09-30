@@ -9,7 +9,7 @@ import { Splitter, usePanelWidth } from "@/ui/splitter";
 import { TitleBar } from "./TitleBar";
 import { FOLDED_WIDTH, Sidebar, type NewCollection, type View } from "./Sidebar";
 import { HistoryView, viewTitle, type HistoryHandle } from "./HistoryView";
-import { SnippetsView, useSnippets } from "./SnippetsView";
+import { SnippetsView, useSnippets, type SnippetsHandle } from "./SnippetsView";
 import { SettingsView } from "./SettingsView";
 import { Onboarding } from "./Onboarding";
 import { UpdateDialog } from "./UpdateDialog";
@@ -31,6 +31,7 @@ export function MainApp() {
   const [naming, setNaming] = useState(false);
   const [onboardingDone, setOnboardingDone] = useState(false);
   const history = useRef<HistoryHandle>(null);
+  const snippetsView = useRef<SnippetsHandle>(null);
   const snippets = useSnippets();
   const aiOnline = useAiOnline(settings);
 
@@ -81,13 +82,24 @@ export function MainApp() {
 
   // Leaving a view with an unsaved edit asks first.
   const go = useCallback((v: View) => {
-    if (history.current) history.current.guard(() => setView(v));
+    const guard = history.current?.guard ?? snippetsView.current?.guard;
+    if (guard) guard(() => setView(v));
     else setView(v);
   }, []);
 
-  // A deleted collection or an app with no clips left: back to the history.
+  // A deleted collection: back to the history. The list is fetched again
+  // first, as a collection just created may not be in it yet.
   useEffect(() => {
-    if (view.kind === "collection" && !collections.some((c) => c.id === view.id)) setView({ kind: "history" });
+    if (view.kind !== "collection" || collections.some((c) => c.id === view.id)) return;
+    let alive = true;
+    api.collections().then((list) => {
+      if (!alive) return;
+      setCollections(list);
+      if (!list.some((c) => c.id === view.id)) setView({ kind: "history" });
+    });
+    return () => {
+      alive = false;
+    };
   }, [collections, view]);
 
   const search = useCallback(() => {
@@ -156,7 +168,7 @@ export function MainApp() {
             listPanel={list}
           />
         )}
-        {view.kind === "snippets" && <SnippetsView listPanel={list} />}
+        {view.kind === "snippets" && <SnippetsView ref={snippetsView} listPanel={list} />}
         {view.kind === "settings" && <SettingsView stats={stats} />}
       </div>
 

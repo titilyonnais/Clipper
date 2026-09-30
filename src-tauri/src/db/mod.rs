@@ -26,6 +26,8 @@ pub struct Db {
     thumbs_dir: PathBuf,
     /// When the deletion that can still be undone happened.
     undo_since: Mutex<Option<std::time::Instant>>,
+    /// Serialises read-modify-write of the settings (see `update_settings`).
+    settings_lock: Mutex<()>,
 }
 
 pub fn now() -> String {
@@ -44,6 +46,9 @@ fn open_connection(path: &Path) -> Result<Connection> {
     Ok(conn)
 }
 
+/// Images set aside by a restore (see `tidy_images`).
+const HELD_IMAGES: &str = "images-avant-restauration";
+
 impl Db {
     pub fn open(data_dir: &Path) -> Result<Self> {
         let images_dir = data_dir.join("images");
@@ -57,10 +62,11 @@ impl Db {
             images_dir,
             thumbs_dir,
             undo_since: Mutex::new(None),
+            settings_lock: Mutex::new(()),
         };
         db.migrate()?;
         db.conn.lock().pragma_update(None, "foreign_keys", "ON")?;
-        db.tidy_images()?;
+        db.tidy_images(false)?;
         Ok(db)
     }
 
@@ -85,18 +91,49 @@ impl Db {
     /// half-written), their thumbnails, and
     /// the image clips whose file is gone (a backup restored from before
     /// the file was deleted).
-    fn tidy_images(&self) -> Result<()> {
+    ///
+    /// After a restore (`hold`), the images the restored database does not
+    /// use are set aside rather than deleted: restoring the backup made just
+    /// before brings them back. They are deleted after 30 days.
+    fn tidy_images(&self, hold: bool) -> Result<()> {
         let used: std::collections::HashSet<String> = {
             let c = self.conn.lock();
             let mut stmt = c.prepare("SELECT content FROM clips WHERE kind = 'image'")?;
             let rows = stmt.query_map([], |r| r.get(0))?;
             rows.collect::<rusqlite::Result<_>>()?
         };
+        let held_dir = self.data_dir().join(HELD_IMAGES);
+        if let Ok(entries) = std::fs::read_dir(&held_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let expired = entry
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|t| t.elapsed().ok())
+                    .is_some_and(|age| age > std::time::Duration::from_secs(30 * 86_400));
+                if used.contains(&name) && !self.images_dir.join(&name).exists() {
+                    let _ = std::fs::rename(entry.path(), self.images_dir.join(&name));
+                } else if expired {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
+            let _ = std::fs::remove_dir(&held_dir); // only when empty
+        }
         let mut present = std::collections::HashSet::new();
         for entry in std::fs::read_dir(&self.images_dir)?.flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
             if used.contains(&name) {
                 present.insert(name);
+            } else if hold && name.ends_with(".png") {
+                let _ = std::fs::create_dir_all(&held_dir);
+                let dest = held_dir.join(&name);
+                if std::fs::rename(entry.path(), &dest).is_ok() {
+                    // The 30 days count from now, not from the capture.
+                    if let Ok(file) = std::fs::File::options().write(true).open(&dest) {
+                        let _ = file.set_modified(std::time::SystemTime::now());
+                    }
+                }
             } else if name.ends_with(".png") || name.ends_with(".tmp") {
                 let _ = std::fs::remove_file(entry.path());
             }
@@ -134,7 +171,7 @@ impl Db {
         drop(conn);
         self.migrate()?;
         self.conn.lock().pragma_update(None, "foreign_keys", "ON")?;
-        self.tidy_images()?;
+        self.tidy_images(true)?;
         Ok(())
     }
 
@@ -251,7 +288,11 @@ impl Db {
         let name = format!("{}.png", crate::clipboard::sha256_hex(png));
         let path = self.images_dir.join(&name);
         if !path.exists() {
-            std::fs::write(&path, png)?;
+            // Written aside then renamed: a crash never leaves half an image
+            // under a name that is then taken as complete.
+            let tmp = path.with_extension("png.tmp");
+            std::fs::write(&tmp, png)?;
+            std::fs::rename(&tmp, &path)?;
         }
         Ok(name)
     }

@@ -144,13 +144,8 @@ pub fn set_paused(app: &AppHandle, paused: bool, duration: Option<Duration>) {
     } else {
         state.monitor.resume();
     }
-    if let Ok(mut s) = state.db.get_settings() {
-        let forever = paused && duration.is_none();
-        if s.monitor_paused != forever {
-            s.monitor_paused = forever;
-            let _ = state.db.set_settings(&s);
-        }
-    }
+    let forever = paused && duration.is_none();
+    let _ = state.db.update_settings(|s| s.monitor_paused = forever);
     let _ = app.emit("monitor:paused", state.monitor.paused_until());
     refresh(app);
     if let (true, Some(d)) = (paused, duration) {

@@ -1,5 +1,35 @@
 # Notes de version
 
+## 3.6.0
+
+### Applications ignorées
+- Plus besoin de taper le chemin d'un .exe : « Ajouter » ouvre la liste des applications installées, détectées en une fraction de seconde (menu Démarrer, programmes installés, applications ouvertes, historique).
+- Suggestions en tête : gestionnaires de mots de passe, authentification à deux facteurs, portefeuilles crypto, banques, accès à distance… Puis les applications dont vous avez déjà copié quelque chose, les plus récentes d'abord.
+- Recherche instantanée, y compris par initiales (« vsc ») ou par type (« mots de passe »), au clavier avec ↑ ↓ et Entrée. « Parcourir… » ouvre l'explorateur Windows pour choisir n'importe quel exécutable.
+- Chaque application apparaît avec son icône et son vrai nom ; les plus pertinentes sont aussi proposées directement dans Paramètres › Capture.
+
+### Documentation dans l'application
+- Nouvel onglet « Guide » dans les paramètres : tout Clipper en quelques sections repliables.
+- Les notes de version sont dans À propos, celle de la version installée dépliée.
+
+### Corrections
+- Grande fenêtre : copier un élément après avoir fait défiler la liste ne ramène plus en haut ; l'élément reste sous le pointeur et reprend sa place au prochain affichage.
+- Collage rapide : la sélection revient sur le premier élément à chaque ouverture. Ctrl+1…9 fonctionne aussi avec le pavé numérique et sur tous les claviers (AZERTY compris) ; avec Maj, en texte brut.
+- Après une suppression, la sélection passe à l'élément suivant au lieu de remonter en haut.
+- Snippets : changer de snippet avec des modifications non enregistrées demande d'abord quoi en faire.
+- Réduire la limite d'éléments demande confirmation quand des éléments vont être supprimés.
+- Réglages : deux changements rapprochés ne s'écrasent plus, et un réglage illisible ne remet plus tous les autres à zéro.
+- Restauration d'une sauvegarde : le raccourci, Win+V, le démarrage avec Windows et la pause restent ceux de cet ordinateur ; les images de l'historique remplacé sont gardées 30 jours.
+- Presse-papiers occupé par une autre application : Clipper insiste un peu au lieu de manquer la copie.
+- Collage en série : reprend la main si une autre application lit le presse-papiers en boucle.
+- Texte des images : respecte l'option « Masquer les secrets » et s'affiche dès qu'il est reconnu.
+- Un secret copié à nouveau après avoir activé la détection est désormais masqué, sans sa mise en forme.
+- Annuler une suppression retrouve toujours l'image, même si le nettoyage automatique est passé entre-temps.
+- Images enregistrées de façon sûre : une coupure ne laisse plus de fichier incomplet.
+- Raccourcis affichés avec les touches de votre clavier (Maj, Win, lettres AZERTY).
+- Renommer une collection ou modifier des tags : Échap annule vraiment.
+- Intelligence artificielle : Claude Opus 5.5 par défaut, Sonnet 5.5 proposé.
+
 ## 3.5.1
 
 - Première version livrée par la mise à jour automatique : elle s'installe depuis Paramètres › À propos, sans fenêtre, et Clipper redémarre tout seul.

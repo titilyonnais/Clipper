@@ -1,7 +1,7 @@
 {
   "name": "clipper",
   "private": true,
-  "version": "3.5.1",
+  "version": "3.6.0",
   "description": "Gestionnaire de presse-papiers pour Windows",
   "license": "MIT",
   "type": "module",

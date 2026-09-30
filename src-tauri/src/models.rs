@@ -135,7 +135,7 @@ impl Default for Settings {
             ollama_model: "gemma3:4b".into(),
             openai_base_url: "https://api.openai.com".into(),
             openai_model: "gpt-5".into(),
-            anthropic_model: "claude-opus-5".into(),
+            anthropic_model: "claude-opus-5-5".into(),
             shortcuts: Default::default(),
         }
     }

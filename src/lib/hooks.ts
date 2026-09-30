@@ -19,12 +19,20 @@ const PAGE = 80;
 
 /**
  * Paginated clip list that refreshes itself when the history changes.
- * Every response is tagged so a slow, outdated query never overwrites a newer one.
+ * Responses are tagged so a slow, outdated query never overwrites a newer one.
+ *
+ * `stable`: on refresh, items already shown keep their place (a copied or
+ * pinned item does not jump to the top under the pointer); only new items
+ * are added at the top. `reorder()` applies the real order again.
  */
-export function useClipList(params: ListParams | null) {
+export function useClipList(params: ListParams | null, stable = false) {
   const [clips, setClips] = useState<ClipItem[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  // A reset outdates every request before it, a refresh the older resets
+  // and refreshes; loading more outdates nothing, so a refresh is never
+  // lost behind it (the pages it adds are deduplicated).
+  const generation = useRef(0);
   const request = useRef(0);
   const clipsRef = useRef(clips);
   clipsRef.current = clips;
@@ -33,12 +41,24 @@ export function useClipList(params: ListParams | null) {
   const load = useCallback(
     async (mode: "reset" | "refresh" | "more") => {
       if (!params) return;
-      const id = ++request.current;
+      const gen = mode === "reset" ? ++generation.current : generation.current;
+      const id = mode === "more" ? 0 : ++request.current;
       const offset = mode === "more" ? clipsRef.current.length : 0;
       const limit = mode === "refresh" ? Math.max(PAGE, clipsRef.current.length) : PAGE;
       const page = await api.list({ ...params, limit, offset });
-      if (id !== request.current) return;
-      setClips(mode === "more" ? [...clipsRef.current, ...page] : page);
+      if (gen !== generation.current || (mode !== "more" && id !== request.current)) return;
+      const prev = clipsRef.current;
+      if (mode === "more") {
+        const shown = new Set(prev.map((c) => c.id));
+        setClips([...prev, ...page.filter((c) => !shown.has(c.id))]);
+      } else if (mode === "refresh" && stable && prev.length) {
+        const fresh = new Map(page.map((c) => [c.id, c]));
+        const shown = new Set(prev.map((c) => c.id));
+        const kept = prev.flatMap((c) => fresh.get(c.id) ?? []);
+        setClips([...page.filter((c) => !shown.has(c.id)), ...kept]);
+      } else {
+        setClips(page);
+      }
       setHasMore(page.length === limit);
       setLoaded(true);
     },
@@ -64,6 +84,7 @@ export function useClipList(params: ListParams | null) {
     loaded,
     loadMore: () => load("more"),
     refresh: () => load("refresh"),
+    reorder: () => load("reset"),
   };
 }
 

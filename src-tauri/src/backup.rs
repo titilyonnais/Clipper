@@ -131,27 +131,34 @@ pub fn restore(db: &Db, name: &str) -> Result<(), String> {
     if !src.exists() {
         return Err("Sauvegarde introuvable.".into());
     }
-    // Keep the current state, in case the restore is a mistake.
-    write(
-        db,
-        &format!(
-            "{PREFIX}{}-avant-restauration",
-            chrono::Local::now().format("%Y-%m-%d-%H%M%S")
-        ),
-    )
-    .map_err(|e| e.to_string())?;
-    if !name.ends_with(PACKED) {
-        return db.restore_from(&src).map_err(|e| e.to_string());
-    }
+    // Read the backup first: the safety backup below may remove the oldest
+    // one, which can be this one.
     let plain = dir.join("restauration.tmp");
     let unpacked = (|| {
-        let mut input = GzDecoder::new(BufReader::new(File::open(&src)?));
         let mut out = BufWriter::new(File::create(&plain)?);
-        std::io::copy(&mut input, &mut out)?;
+        if name.ends_with(PACKED) {
+            std::io::copy(
+                &mut GzDecoder::new(BufReader::new(File::open(&src)?)),
+                &mut out,
+            )?;
+        } else {
+            std::io::copy(&mut BufReader::new(File::open(&src)?), &mut out)?;
+        }
         out.flush()
     })();
     let result = unpacked
         .map_err(|e| format!("Sauvegarde illisible : {e}"))
+        .and_then(|()| {
+            // Keep the current state, in case the restore is a mistake.
+            write(
+                db,
+                &format!(
+                    "{PREFIX}{}-avant-restauration",
+                    chrono::Local::now().format("%Y-%m-%d-%H%M%S")
+                ),
+            )
+            .map_err(|e| e.to_string())
+        })
         .and_then(|()| db.restore_from(&plain).map_err(|e| e.to_string()));
     let _ = std::fs::remove_file(&plain);
     result
@@ -193,6 +200,45 @@ mod tests {
         restore(&db, &names[0]).unwrap();
         assert_eq!(db.get_settings().unwrap().max_items, 1234);
         assert!(!dir(&db).join("restauration.tmp").exists());
+        drop(db);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    /// With the maximum number of backups, the safety backup made before a
+    /// restore must not remove the oldest one before it is read.
+    #[test]
+    fn oldest_backup_restores() {
+        let data = std::env::temp_dir().join(format!("clipper-oldest-{}", std::process::id()));
+        let db = Db::open(&data).unwrap();
+        let mut settings = db.get_settings().unwrap();
+        for day in 0..KEEP {
+            settings.max_items = 100 + day as i64;
+            db.set_settings(&settings).unwrap();
+            let stem = format!("{PREFIX}2020-01-0{}", day + 1);
+            write(&db, &stem).unwrap();
+            let date = std::time::SystemTime::UNIX_EPOCH
+                + std::time::Duration::from_secs(1_577_880_000 + day as u64 * 86_400);
+            File::options()
+                .write(true)
+                .open(dir(&db).join(format!("{stem}{PACKED}")))
+                .unwrap()
+                .set_modified(date)
+                .unwrap();
+        }
+        let oldest = list(&db).last().unwrap().name.clone();
+        assert_eq!(oldest, format!("{PREFIX}2020-01-01{PACKED}"));
+        // An image the backups do not know about.
+        let image = data.join("images").join("recent.png");
+        std::fs::write(&image, b"png").unwrap();
+
+        restore(&db, &oldest).unwrap();
+        assert_eq!(db.get_settings().unwrap().max_items, 100);
+        assert_eq!(list(&db).len(), KEEP);
+        assert!(!image.exists());
+        assert!(data
+            .join("images-avant-restauration")
+            .join("recent.png")
+            .exists());
         drop(db);
         let _ = std::fs::remove_dir_all(&data);
     }
