@@ -11,6 +11,7 @@ mod win;
 
 pub use classify::{
     classify, files_preview, hash_files, hash_image, hash_text, make_preview, png_dimensions,
+    sha256_hex,
 };
 pub use win::{process_of_window, read_text, Payload};
 

@@ -4,16 +4,26 @@ use sha2::{Digest, Sha256};
 
 pub const PREVIEW_CHARS: usize = 280;
 
+/// SHA-256 of `data` in lowercase hexadecimal: stored in the database and
+/// used as image file names, so its form must never change.
+pub fn sha256_hex(data: &[u8]) -> String {
+    use std::fmt::Write;
+    Sha256::digest(data).iter().fold(String::with_capacity(64), |mut out, b| {
+        let _ = write!(out, "{b:02x}");
+        out
+    })
+}
+
 pub fn hash_text(s: &str) -> String {
-    format!("t:{:x}", Sha256::digest(s.as_bytes()))
+    format!("t:{}", sha256_hex(s.as_bytes()))
 }
 
 pub fn hash_files(paths: &[String]) -> String {
-    format!("f:{:x}", Sha256::digest(paths.join("\n").as_bytes()))
+    format!("f:{}", sha256_hex(paths.join("\n").as_bytes()))
 }
 
 pub fn hash_image(png: &[u8]) -> String {
-    format!("i:{:x}", Sha256::digest(png))
+    format!("i:{}", sha256_hex(png))
 }
 
 pub fn png_dimensions(png: &[u8]) -> Option<(u32, u32)> {
@@ -191,5 +201,18 @@ mod tests {
         .unwrap();
         assert_eq!(png_dimensions(&png), Some((1, 1)));
         assert_eq!(png_dimensions(b"nope"), None);
+    }
+}
+
+#[cfg(test)]
+mod hash_tests {
+    /// The form of hashes and image file names written by earlier versions.
+    #[test]
+    fn sha256_hex_is_unchanged() {
+        assert_eq!(
+            super::sha256_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_eq!(super::hash_text("abc"), format!("t:{}", super::sha256_hex(b"abc")));
     }
 }
