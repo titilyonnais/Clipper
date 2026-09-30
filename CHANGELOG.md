@@ -1,5 +1,12 @@
 # Notes de version
 
+## 3.5.1
+
+- Première version livrée par la mise à jour automatique : elle s'installe depuis Paramètres › À propos, sans fenêtre, et Clipper redémarre tout seul.
+- Fenêtres de dialogue : fond sombre uni à la place du flou, qui donnait un aspect compressé.
+- Aide des raccourcis du collage rapide : fond opaque, sans flou.
+- Fenêtre de mise à jour : contour de sélection du bouton plus discret.
+
 ## 3.5.0
 
 ### Mises à jour automatiques
