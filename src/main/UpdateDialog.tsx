@@ -115,7 +115,7 @@ export function UpdateDialog() {
                 type="button"
                 data-autofocus
                 onClick={u.status === "error" ? retry : installUpdate}
-                className="h-8 rounded-[7px] bg-white px-4 text-13 text-black transition-colors hover:bg-white/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/50"
+                className="h-8 rounded-[7px] bg-white px-4 text-13 text-black transition-colors hover:bg-white/85 focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-white/30"
               >
                 {u.status === "error" ? "Réessayer" : "Mettre à jour"}
               </button>

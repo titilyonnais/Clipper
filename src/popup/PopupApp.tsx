@@ -180,7 +180,7 @@ export function PopupApp() {
       )}
 
       {help && (
-        <div className="absolute inset-x-0 top-14 bottom-10 z-20 flex animate-in flex-col bg-background/95 px-8 py-6 backdrop-blur-sm">
+        <div className="absolute inset-x-0 top-14 bottom-10 z-20 flex animate-in flex-col bg-background px-8 py-6">
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-sm text-foreground">Raccourcis clavier</h2>
             <IconButton label="Fermer" size="sm" onClick={() => setHelp(false)}>

@@ -37,7 +37,7 @@ export function Dialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-40 flex animate-backdrop items-center justify-center bg-black/35 p-6 backdrop-blur-xl [.light_&]:bg-black/15 backdrop-saturate-150"
+      className="fixed inset-0 z-40 flex animate-in items-center justify-center bg-black/65 p-6 [.light_&]:bg-black/25"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
